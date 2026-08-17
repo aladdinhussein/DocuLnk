@@ -1,0 +1,22 @@
+{
+  "name": "doculnk-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "func start",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "@azure/communication-email": "^1.1.0",
+    "@azure/data-tables": "^13.3.0",
+    "@azure/functions": "^4.7.2",
+    "@azure/storage-blob": "^12.29.1",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "oxlint": "^1.75.0",
+    "typescript": "~6.0.2"
+  }
+}

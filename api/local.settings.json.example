@@ -1,0 +1,16 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "DOCULNK_STORAGE_CONNECTION_STRING": "",
+    "DOCULNK_TABLE_NAME": "DocuLnkRecords",
+    "DOCULNK_TEMPLATE_CONTAINER": "templates",
+    "DOCULNK_SIGNED_CONTAINER": "signed-documents",
+    "DOCULNK_PUBLIC_BASE_URL": "http://localhost:5173",
+    "DOCULNK_COMMUNICATION_SERVICES_CONNECTION_STRING": "",
+    "DOCULNK_EMAIL_SENDER_ADDRESS": "",
+    "DOCULNK_ADMIN_EMAIL": "",
+    "DOCULNK_RETENTION_DAYS": "365"
+  }
+}
