@@ -2,8 +2,6 @@ import { EmailClient } from '@azure/communication-email'
 
 const connectionString = process.env.DOCULNK_COMMUNICATION_SERVICES_CONNECTION_STRING
 const senderAddress = process.env.DOCULNK_EMAIL_SENDER_ADDRESS
-const publicBaseUrl = process.env.DOCULNK_PUBLIC_BASE_URL ?? ''
-
 function emailClient(): EmailClient {
   if (!connectionString) {
     throw new Error('DOCULNK_COMMUNICATION_SERVICES_CONNECTION_STRING is required')
@@ -18,40 +16,35 @@ function requireSender(): string {
   return senderAddress
 }
 
-export async function sendSigningInvitation(input: {
-  recipientEmail: string
+export async function sendSubmissionToAdmin(input: {
   templateName: string
-  requestId: string
-  expiresAt: string
+  submissionId: string
+  signerEmail?: string
+  pdfBytes: Uint8Array
 }): Promise<void> {
-  const link = `${publicBaseUrl.replace(/\/$/, '')}/sign/${input.requestId}`
   const poller = await emailClient().beginSend({
     senderAddress: requireSender(),
     content: {
-      subject: `Signature requested: ${input.templateName}`,
-      plainText: `You have been asked to sign ${input.templateName}. Open this link to review and sign: ${link}\n\nThis link expires on ${new Date(input.expiresAt).toLocaleDateString()}.`,
-      html: `<p>You have been asked to sign <strong>${escapeHtml(input.templateName)}</strong>.</p><p><a href="${link}">Review and sign the document</a></p><p>This link expires on ${new Date(input.expiresAt).toLocaleDateString()}.</p>`,
+      subject: `New submission: ${input.templateName}`,
+      plainText: `${input.templateName} received a signed submission. Submission ID: ${input.submissionId}${input.signerEmail ? `\nSigner email: ${input.signerEmail}` : ''}`,
+      html: `<p><strong>${escapeHtml(input.templateName)}</strong> received a signed submission.</p><p>Submission ID: ${escapeHtml(input.submissionId)}</p>${input.signerEmail ? `<p>Signer email: ${escapeHtml(input.signerEmail)}</p>` : ''}`,
     },
-    recipients: { to: [{ address: input.recipientEmail }] },
+    recipients: { to: [{ address: requireAdminEmail() }] },
+    attachments: [{
+      name: `${input.submissionId}-signed.pdf`,
+      contentType: 'application/pdf',
+      contentInBase64: Buffer.from(input.pdfBytes).toString('base64'),
+    }],
   })
   await poller.pollUntilDone()
 }
 
-export async function sendCompletionNotification(input: {
-  recipientEmail: string
-  templateName: string
-  requestId: string
-}): Promise<void> {
-  const poller = await emailClient().beginSend({
-    senderAddress: requireSender(),
-    content: {
-      subject: `Document signed: ${input.templateName}`,
-      plainText: `${input.templateName} has been signed. Request ID: ${input.requestId}`,
-      html: `<p><strong>${escapeHtml(input.templateName)}</strong> has been signed.</p><p>Request ID: ${escapeHtml(input.requestId)}</p>`,
-    },
-    recipients: { to: [{ address: input.recipientEmail }] },
-  })
-  await poller.pollUntilDone()
+function requireAdminEmail(): string {
+  const adminEmail = process.env.DOCULNK_ADMIN_EMAIL
+  if (!adminEmail) {
+    throw new Error('DOCULNK_ADMIN_EMAIL is required')
+  }
+  return adminEmail
 }
 
 function escapeHtml(value: string): string {

@@ -1,0 +1,441 @@
+/*
+ * Admin surfaces: dashboard and template editor.
+ *
+ * The header is a two-row grid — navigation and actions on top, the identity of
+ * what you are looking at below. That ordering means the primary action sits in
+ * the same place on every screen while the heading tells you where you are.
+ */
+
+/* ---------- header ---------------------------------------------------- */
+
+.app-header {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-8);
+}
+
+.app-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 36px;
+}
+
+.app-header-identity h1 {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-medium);
+  /* Tighter tracking as type scales up; default tracking at 30px reads as a document. */
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  text-wrap: balance;
+}
+
+.app-header-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-header-meta .dot::before {
+  content: '·';
+  margin: 0 2px;
+}
+
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ---------- back affordance ------------------------------------------- */
+
+/*
+ * Back is navigation, not an action, so it reads as tertiary and names its
+ * destination. It was previously a filled secondary button sitting beside
+ * Publish, which made leaving look as consequential as publishing.
+ */
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: -8px;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-subtle);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.back-link:hover {
+  background: var(--surface-sunken);
+  color: var(--color-text);
+}
+
+.back-link:active {
+  transform: scale(0.98);
+}
+
+.back-link svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/* ---------- status chip ----------------------------------------------- */
+
+/*
+ * A published template is a live URL anyone with the link can submit against.
+ * That state persists, so it is shown as status rather than inferred from a
+ * button label that flips to "Template published".
+ */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.status-chip::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-border-strong);
+  flex: none;
+}
+
+.status-chip[data-state='live'] {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: var(--success-50);
+  color: var(--success-700);
+}
+
+.status-chip[data-state='live']::before {
+  background: var(--success-500);
+}
+
+/* ---------- button tiers ---------------------------------------------- */
+
+.app-header .primary-button,
+.app-header .secondary-button {
+  padding: 9px 16px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.app-header .primary-button {
+  /* Flat accent rather than the gradient-plus-glow: at this size the glow read
+     as decoration competing with the heading. */
+  background: var(--color-accent);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.app-header .primary-button:hover:not(:disabled) {
+  background: var(--color-accent-strong);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+  transform: none;
+}
+
+.app-header .primary-button:active:not(:disabled),
+.app-header .secondary-button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.app-header .primary-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ghost-button {
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.ghost-button:hover {
+  background: var(--surface-sunken);
+  color: var(--color-text);
+}
+
+.ghost-button:active {
+  transform: scale(0.98);
+}
+
+/* ---------- header notice --------------------------------------------- */
+
+/*
+ * The publish result used to render inside the header's action row, so the
+ * header reflowed and the buttons shifted the moment you published.
+ */
+.header-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-5);
+  padding: 10px var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.header-notice[data-tone='success'] {
+  background: var(--success-50);
+  color: var(--success-700);
+}
+
+.header-notice[data-tone='error'] {
+  background: var(--danger-50);
+  color: var(--danger-700);
+}
+
+.header-notice[data-tone='info'] {
+  background: var(--surface-accent);
+  color: var(--accent-700);
+}
+
+/* ---------- field overlays over the document -------------------------- */
+
+/*
+ * Overlays mark where a value goes; they must not obscure the form they sit on.
+ * The 2px dashed border plus a tinted fill plus a bold label inside every box
+ * added up to the document being unreadable.
+ */
+.pdf-page .field-overlay {
+  border-width: 1.5px;
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.field-overlay-label {
+  max-width: 100%;
+  padding: 0 2px;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Sits over printed text, so it stays quiet until the field is selected. */
+  opacity: 0.75;
+}
+
+.field-overlay-selected .field-overlay-label {
+  opacity: 1;
+}
+
+/* Read the form underneath without losing your field layout. */
+.pdf-stage.fields-hidden .field-overlay {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- field placement ------------------------------------------- */
+
+.field-form .position-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.field-form .position-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.field-form .position-row input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 7px 8px;
+  background: #ffffff;
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  /* Digits must not shift width as they change. */
+  font-variant-numeric: tabular-nums;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.field-form .position-row input:hover {
+  border-color: var(--color-border-strong);
+}
+
+.field-hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  color: var(--color-text-muted);
+}
+
+.field-hint kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+/* ---------- access denied --------------------------------------------- */
+
+.centered-message code {
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.access-hint {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.access-error {
+  padding: 10px var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--danger-50);
+  color: var(--danger-700);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.access-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* ---------- workspace load states ------------------------------------- */
+
+.load-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
+
+.load-banner[data-tone='error'] {
+  border-color: rgba(185, 28, 28, 0.25);
+  background: var(--danger-50);
+  color: var(--danger-700);
+}
+
+/* ---------- submissions ----------------------------------------------- */
+
+.request-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* 44px hit area from a 20px glyph, per WCAG target size. */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--danger-50);
+  color: var(--danger-700);
+}
+
+.icon-button:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dialog-error {
+  margin: 0 0 var(--space-3);
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--danger-50);
+  color: var(--danger-700);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .back-link:active,
+  .ghost-button:active,
+  .icon-button:active,
+  .app-header .primary-button:active:not(:disabled),
+  .app-header .secondary-button:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-header-top {
+    flex-wrap: wrap;
+  }
+
+  .app-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .app-header-identity h1 {
+    font-size: var(--text-xl);
+  }
+}

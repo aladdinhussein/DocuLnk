@@ -1,19 +1,18 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  getSigningRequest,
-  isRequestExpired,
-  listSigningRequests,
-  saveSigningRequest,
-  updateSigningRequest,
+  getSubmission,
+  listSubmissions,
+  saveSubmission,
+  updateSubmission,
 } from './requestStore'
 
-const request = {
-  requestId: 'request-1',
+const submission = {
+  submissionId: 'submission-1',
   templateId: 'template-1',
   templateHash: 'abc123',
-  status: 'sent' as const,
   createdAt: '2026-08-16T10:00:00.000Z',
-  expiresAt: '2026-08-23T10:00:00.000Z',
+  signedPdfDataUrl: 'data:application/pdf;base64,JVBERi0=',
+  emailStatus: 'pending' as const,
 }
 
 beforeEach(() => {
@@ -31,21 +30,18 @@ beforeEach(() => {
   })
 })
 
-describe('requestStore', () => {
-  it('saves and lists signing requests', () => {
-    saveSigningRequest(request)
+describe('submissionStore', () => {
+  it('saves and lists submissions', () => {
+    saveSubmission(submission)
 
-    expect(getSigningRequest(request.requestId)).toEqual(request)
-    expect(listSigningRequests()).toEqual([request])
+    expect(getSubmission(submission.submissionId)).toEqual(submission)
+    expect(listSubmissions()).toEqual([submission])
   })
 
-  it('updates request status', () => {
-    saveSigningRequest(request)
+  it('updates email delivery state without losing the signed copy', () => {
+    saveSubmission(submission)
 
-    expect(updateSigningRequest(request.requestId, { status: 'revoked' })?.status).toBe('revoked')
-  })
-
-  it('detects expired requests', () => {
-    expect(isRequestExpired(request, new Date('2026-08-24T10:00:00.000Z'))).toBe(true)
+    expect(updateSubmission(submission.submissionId, { emailStatus: 'failed', emailError: 'ACS unavailable' })?.emailStatus).toBe('failed')
+    expect(getSubmission(submission.submissionId)?.signedPdfDataUrl).toBe(submission.signedPdfDataUrl)
   })
 })

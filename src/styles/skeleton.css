@@ -1,0 +1,111 @@
+/*
+ * Loading placeholders.
+ *
+ * The sweep is a pseudo-element moved with `transform`, not an animated
+ * `background-position`. Only transform and opacity are GPU-composited;
+ * animating background-position repaints every frame.
+ */
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--skeleton-base);
+  /* Placeholders have no content to read out. */
+  user-select: none;
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--skeleton-sheen),
+    transparent
+  );
+  animation: skeleton-sweep 1.3s var(--ease-out) infinite;
+  /* Rows stagger so a list reads as a cascade rather than one flat pulse. */
+  animation-delay: var(--skeleton-delay, 0ms);
+}
+
+@keyframes skeleton-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Circular placeholder, for avatars and status dots. */
+.skeleton-circle {
+  border-radius: 50%;
+}
+
+.skeleton-text {
+  height: 0.85em;
+  margin-block: 0.2em;
+}
+
+/* A block of lines, with the last one short so it reads as prose. */
+.skeleton-paragraph {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.skeleton-paragraph .skeleton:last-child {
+  width: 60%;
+}
+
+.skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Table and list rows shaped like the content they stand in for. */
+.skeleton-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 90px 60px minmax(0, 1fr) 120px;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.skeleton-row:last-child {
+  border-bottom: 0;
+}
+
+.skeleton-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  overflow: hidden;
+}
+
+/* A stand-in for the rendered PDF page, at roughly US Letter proportions. */
+.skeleton-page {
+  width: 100%;
+  max-width: 500px;
+  aspect-ratio: 1 / 1.294;
+  margin: 0 auto;
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /*
+   * Keep the placeholder shape but stop the movement. A static block still
+   * communicates "not ready yet".
+   */
+  .skeleton::after {
+    animation: none;
+    opacity: 0.4;
+    transform: none;
+  }
+}
+
+.skeleton-row-submission {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}

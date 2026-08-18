@@ -2,6 +2,10 @@
   "name": "doculnk-api",
   "private": true,
   "type": "module",
+  "main": "dist/index.js",
+  "engines": {
+    "node": "18.x"
+  },
   "scripts": {
     "build": "tsc",
     "start": "func start",
@@ -12,6 +16,7 @@
     "@azure/data-tables": "^13.3.0",
     "@azure/functions": "^4.7.2",
     "@azure/storage-blob": "^12.29.1",
+    "jose": "^6.2.9",
     "zod": "^4.1.12"
   },
   "devDependencies": {

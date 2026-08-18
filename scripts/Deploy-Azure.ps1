@@ -34,6 +34,14 @@ param(
   [int]$RetentionDays = 365,
 
   [Parameter(Mandatory = $false)]
+  [ValidatePattern('^$|^[0-9a-fA-F-]{36}$')]
+  [string]$AadTenantId = '',
+
+  [Parameter(Mandatory = $false)]
+  [ValidatePattern('^$|^[0-9a-fA-F-]{36}$')]
+  [string]$AadClientId = '',
+
+  [Parameter(Mandatory = $false)]
   [switch]$SkipCommunicationServices,
 
   [Parameter(Mandatory = $false)]
@@ -159,13 +167,28 @@ $FunctionHost = Get-AzureText @(
   '--output', 'tsv'
 )
 
+Write-Host "Configuring CORS for origin $PublicBaseUrl..." -ForegroundColor Cyan
+Invoke-Azure @(
+  'functionapp', 'cors', 'add',
+  '--name', $FunctionApp,
+  '--resource-group', $ResourceGroup,
+  '--allowed-origins', $PublicBaseUrl,
+  '--output', 'none'
+)
+Invoke-Azure @(
+  'functionapp', 'cors', 'credentials',
+  '--name', $FunctionApp,
+  '--resource-group', $ResourceGroup,
+  '--enable', 'true',
+  '--output', 'none'
+)
+
 $FunctionSettings = @(
   'FUNCTIONS_WORKER_RUNTIME=node',
   "DOCULNK_STORAGE_CONNECTION_STRING=$StorageConnection",
   'DOCULNK_TABLE_NAME=DocuLnkRecords',
   'DOCULNK_TEMPLATE_CONTAINER=templates',
   'DOCULNK_SIGNED_CONTAINER=signed-documents',
-  "DOCULNK_PUBLIC_BASE_URL=$PublicBaseUrl",
   "DOCULNK_EMAIL_SENDER_ADDRESS=$EmailSenderAddress",
   "DOCULNK_ADMIN_EMAIL=$AdminEmail",
   "DOCULNK_RETENTION_DAYS=$RetentionDays"
@@ -173,6 +196,16 @@ $FunctionSettings = @(
 
 if ($CommunicationServicesConnectionString) {
   $FunctionSettings += "DOCULNK_COMMUNICATION_SERVICES_CONNECTION_STRING=$CommunicationServicesConnectionString"
+}
+
+# Without both values the API cannot build its JWKS and rejects every admin request
+# with 401 "Authentication required", regardless of the token presented.
+if ($AadTenantId -and $AadClientId) {
+  $FunctionSettings += "DOCULNK_AAD_TENANT_ID=$AadTenantId"
+  $FunctionSettings += "DOCULNK_AAD_CLIENT_ID=$AadClientId"
+}
+else {
+  Write-Warning 'AadTenantId/AadClientId not supplied. Admin API routes will return 401 until DOCULNK_AAD_TENANT_ID and DOCULNK_AAD_CLIENT_ID are set on the Function App.'
 }
 
 Write-Host 'Applying Function App settings...' -ForegroundColor Cyan

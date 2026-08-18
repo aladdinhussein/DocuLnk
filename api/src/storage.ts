@@ -1,6 +1,6 @@
 import { TableClient, type TableEntity } from '@azure/data-tables'
 import { BlobServiceClient, type ContainerClient } from '@azure/storage-blob'
-import type { AuditRecord, SigningRequestRecord, TemplateRecord } from './domain.js'
+import type { AuditRecord, SubmissionRecord, TemplateRecord } from './domain.js'
 
 const connectionString = process.env.DOCULNK_STORAGE_CONNECTION_STRING ?? process.env.AzureWebJobsStorage
 const tableName = process.env.DOCULNK_TABLE_NAME ?? 'DocuLnkRecords'
@@ -58,28 +58,30 @@ export async function getTemplate(templateId: string): Promise<TemplateRecord | 
   }
 }
 
-export async function saveRequest(request: SigningRequestRecord): Promise<void> {
+export async function deleteTemplate(template: TemplateRecord): Promise<void> {
+  const blobs = await container(templateContainerName)
+  await blobs.getBlockBlobClient(template.pdfBlobName).deleteIfExists()
+  await table.deleteEntity('template', template.templateId)
+}
+
+export async function saveSubmission(submission: SubmissionRecord): Promise<void> {
   await table.upsertEntity({
-    partitionKey: 'request',
-    rowKey: request.requestId,
-    ...request,
+    partitionKey: 'submission',
+    rowKey: submission.submissionId,
+    ...submission,
   })
 }
 
-export async function getRequest(requestId: string): Promise<SigningRequestRecord | null> {
+export async function getSubmission(submissionId: string): Promise<SubmissionRecord | null> {
   try {
-    const entity = await table.getEntity<TableEntity<SigningRequestRecord>>('request', requestId)
-    return entity as unknown as SigningRequestRecord
+    const entity = await table.getEntity<TableEntity<SubmissionRecord>>('submission', submissionId)
+    return entity as unknown as SubmissionRecord
   } catch (error) {
     if ((error as { statusCode?: number }).statusCode === 404) {
       return null
     }
     throw error
   }
-}
-
-export async function deleteRequest(requestId: string): Promise<void> {
-  await table.deleteEntity('request', requestId)
 }
 
 export async function listTemplates(): Promise<TemplateRecord[]> {
@@ -92,12 +94,12 @@ export async function listTemplates(): Promise<TemplateRecord[]> {
   return records
 }
 
-export async function listRequests(): Promise<SigningRequestRecord[]> {
-  const records: SigningRequestRecord[] = []
-  for await (const entity of table.listEntities<TableEntity<SigningRequestRecord>>({
-    queryOptions: { filter: "PartitionKey eq 'request'" },
+export async function listSubmissions(): Promise<SubmissionRecord[]> {
+  const records: SubmissionRecord[] = []
+  for await (const entity of table.listEntities<TableEntity<SubmissionRecord>>({
+    queryOptions: { filter: "PartitionKey eq 'submission'" },
   })) {
-    records.push(entity as unknown as SigningRequestRecord)
+    records.push(entity as unknown as SubmissionRecord)
   }
   return records
 }
@@ -131,8 +133,8 @@ export async function consumeRateLimit(key: string, limit: number, windowMs: num
   return true
 }
 
-export async function saveSignedDocument(requestId: string, pdfBytes: Uint8Array): Promise<string> {
-  const blobName = `${requestId}.pdf`
+export async function saveSignedDocument(submissionId: string, pdfBytes: Uint8Array): Promise<string> {
+  const blobName = `${submissionId}.pdf`
   const blobs = await container(signedContainerName)
   await blobs.getBlockBlobClient(blobName).uploadData(pdfBytes, {
     blobHTTPHeaders: { blobContentType: 'application/pdf' },
@@ -157,9 +159,9 @@ export async function getTemplatePdf(template: TemplateRecord): Promise<Uint8Arr
   return bytes
 }
 
-export async function getSignedDocument(requestId: string): Promise<Uint8Array | null> {
+export async function getSignedDocument(submissionId: string): Promise<Uint8Array | null> {
   const blobs = await container(signedContainerName)
-  const client = blobs.getBlockBlobClient(`${requestId}.pdf`)
+  const client = blobs.getBlockBlobClient(`${submissionId}.pdf`)
   if (!(await client.exists())) return null
   const response = await client.download()
   const chunks: Uint8Array[] = []
@@ -175,7 +177,13 @@ export async function getSignedDocument(requestId: string): Promise<Uint8Array |
   return bytes
 }
 
-export async function deleteSignedDocument(requestId: string): Promise<void> {
+export async function deleteSignedDocument(submissionId: string): Promise<void> {
   const blobs = await container(signedContainerName)
-  await blobs.getBlockBlobClient(`${requestId}.pdf`).deleteIfExists()
+  await blobs.getBlockBlobClient(`${submissionId}.pdf`).deleteIfExists()
+}
+
+/** Removes the signed PDF and the submission record. The audit trail is kept. */
+export async function deleteSubmission(submissionId: string): Promise<void> {
+  await deleteSignedDocument(submissionId)
+  await table.deleteEntity('submission', submissionId)
 }

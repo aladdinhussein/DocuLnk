@@ -1,20 +1,19 @@
-export type RequestStatus = 'sent' | 'viewed' | 'completed' | 'expired' | 'revoked'
-
-export type StoredSigningRequest = {
-  requestId: string
+export type StoredSubmission = {
+  submissionId: string
   templateId: string
   templateHash: string
-  recipientEmail?: string
-  status: RequestStatus
   createdAt: string
-  expiresAt: string
-  viewedAt?: string
   signedAt?: string
+  signerEmail?: string
   signedPdfHash?: string
   signedPdfDataUrl?: string
+  signedBlobName?: string
   consentVersion?: string
   consentAcceptedAt?: string
   signerUserAgent?: string
+  emailStatus: 'pending' | 'sent' | 'failed'
+  emailError?: string
+  downloadUrl?: string
 }
 
 const requestPrefix = 'doculnk-request-'
@@ -23,25 +22,25 @@ function requestKey(requestId: string): string {
   return `${requestPrefix}${requestId}`
 }
 
-export function saveSigningRequest(request: StoredSigningRequest): void {
-  localStorage.setItem(requestKey(request.requestId), JSON.stringify(request))
+export function saveSubmission(submission: StoredSubmission): void {
+  localStorage.setItem(requestKey(submission.submissionId), JSON.stringify(submission))
 }
 
-export function getSigningRequest(requestId: string): StoredSigningRequest | null {
-  const raw = localStorage.getItem(requestKey(requestId))
+export function getSubmission(submissionId: string): StoredSubmission | null {
+  const raw = localStorage.getItem(requestKey(submissionId))
   if (!raw) {
     return null
   }
 
   try {
-    return JSON.parse(raw) as StoredSigningRequest
+    return JSON.parse(raw) as StoredSubmission
   } catch {
     return null
   }
 }
 
-export function listSigningRequests(): StoredSigningRequest[] {
-  const requests: StoredSigningRequest[] = []
+export function listSubmissions(): StoredSubmission[] {
+  const submissions: StoredSubmission[] = []
 
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index)
@@ -49,34 +48,30 @@ export function listSigningRequests(): StoredSigningRequest[] {
       continue
     }
 
-    const requestId = key.slice(requestPrefix.length)
-    const request = getSigningRequest(requestId)
-    if (request) {
-      requests.push(request)
+    const submissionId = key.slice(requestPrefix.length)
+    const submission = getSubmission(submissionId)
+    if (submission) {
+      submissions.push(submission)
     }
   }
 
-  return requests.sort((first, second) => second.createdAt.localeCompare(first.createdAt))
+  return submissions.sort((first, second) => second.createdAt.localeCompare(first.createdAt))
 }
 
-export function updateSigningRequest(
-  requestId: string,
-  changes: Partial<StoredSigningRequest>,
-): StoredSigningRequest | null {
-  const request = getSigningRequest(requestId)
-  if (!request) {
+export function updateSubmission(
+  submissionId: string,
+  changes: Partial<StoredSubmission>,
+): StoredSubmission | null {
+  const submission = getSubmission(submissionId)
+  if (!submission) {
     return null
   }
 
-  const updatedRequest = { ...request, ...changes }
-  saveSigningRequest(updatedRequest)
-  return updatedRequest
+  const updatedSubmission = { ...submission, ...changes }
+  saveSubmission(updatedSubmission)
+  return updatedSubmission
 }
 
-export function deleteSigningRequest(requestId: string): void {
-  localStorage.removeItem(requestKey(requestId))
-}
-
-export function isRequestExpired(request: StoredSigningRequest, now = new Date()): boolean {
-  return new Date(request.expiresAt) <= now
+export function deleteSubmission(submissionId: string): void {
+  localStorage.removeItem(requestKey(submissionId))
 }

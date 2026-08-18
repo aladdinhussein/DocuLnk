@@ -13,7 +13,7 @@
       "allowedRoles": ["authenticated"]
     },
     {
-      "route": "/sign/*",
+      "route": "/form/*",
       "allowedRoles": ["anonymous"]
     }
   ],

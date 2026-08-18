@@ -1,0 +1,57 @@
+name: Build and deploy DocuLnk (Static Web App)
+
+on:
+  push:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Prepare Vite env for production
+        shell: bash
+        run: |
+          # Vite reads VITE_* env vars at build time. Write them into .env.production.
+          # These should be created as repository secrets:
+          # - VITE_API_BASE_URL
+          # - VITE_ENABLE_AUTH
+          # - VITE_SUPPORT_EMAIL
+          # - VITE_AAD_CLIENT_ID
+          # - VITE_AAD_TENANT_ID
+          echo "VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}" > .env.production
+          echo "VITE_ENABLE_AUTH=${{ secrets.VITE_ENABLE_AUTH }}" >> .env.production
+          echo "VITE_SUPPORT_EMAIL=${{ secrets.VITE_SUPPORT_EMAIL }}" >> .env.production
+          echo "VITE_AAD_CLIENT_ID=${{ secrets.VITE_AAD_CLIENT_ID }}" >> .env.production
+          echo "VITE_AAD_TENANT_ID=${{ secrets.VITE_AAD_TENANT_ID }}" >> .env.production
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_KIND_FOREST_01566140F  }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "/"        # root of the front-end project
+          api_location: ""         # API is deployed separately (Function App)
+          output_location: "dist"  # Vite build output folder
+
+# Notes:
+# - Create the GitHub secrets before running: AZURE_STATIC_WEB_APPS_API_TOKEN, VITE_API_BASE_URL, VITE_ENABLE_AUTH, VITE_SUPPORT_EMAIL, VITE_AAD_CLIENT_ID, VITE_AAD_TENANT_ID
+# - VITE_API_BASE_URL should be like: https://<function-hostname>/api  (no trailing slash)
+# - VITE_AAD_CLIENT_ID/VITE_AAD_TENANT_ID must match the Entra ID app registration used for admin sign-in (MSAL), and the Function App's DOCULNK_AAD_CLIENT_ID/DOCULNK_AAD_TENANT_ID settings.
+# - If the Static Web App will call the Function host directly, add the Static Web App hostname to the Function App CORS list.

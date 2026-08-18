@@ -1,5 +1,3 @@
-export type RequestStatus = 'sent' | 'viewed' | 'completed' | 'expired' | 'revoked'
-
 export type TemplateRecord = {
   templateId: string
   name: string
@@ -11,21 +9,20 @@ export type TemplateRecord = {
   publishedAt: string
 }
 
-export type SigningRequestRecord = {
-  requestId: string
+export type SubmissionRecord = {
+  submissionId: string
   templateId: string
   templateHash: string
-  recipientEmail: string
-  status: RequestStatus
   createdAt: string
-  expiresAt: string
-  viewedAt?: string
   signedAt?: string
+  signerEmail?: string
   signedBlobName?: string
   signedPdfHash?: string
   consentVersion?: string
   consentAcceptedAt?: string
   signerUserAgent?: string
+  emailStatus: 'pending' | 'sent' | 'failed'
+  emailError?: string
 }
 
 export type AuditRecord = {
@@ -38,6 +35,3 @@ export type AuditRecord = {
   metadata?: string
 }
 
-export function isExpired(record: SigningRequestRecord, now = new Date()): boolean {
-  return new Date(record.expiresAt) <= now
-}

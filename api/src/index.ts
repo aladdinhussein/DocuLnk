@@ -1,22 +1,25 @@
 import { createHash } from 'node:crypto'
 import { app, type HttpRequest, type HttpResponseInit } from '@azure/functions'
+import { createRemoteJWKSet, jwtVerify } from 'jose'
 import { z } from 'zod'
-import { isExpired } from './domain.js'
-import { sendCompletionNotification, sendSigningInvitation } from './email.js'
+import { sendSubmissionToAdmin } from './email.js'
+import type { SubmissionRecord } from './domain.js'
 import {
-  getRequest,
+  consumeRateLimit,
+  deleteTemplate,
+  deleteSignedDocument,
+  deleteSubmission,
+  getSignedDocument,
+  getSubmission,
   getTemplate,
   getTemplatePdf,
-  getSignedDocument,
   initializeStorage,
-  listRequests,
+  listSubmissions,
   listTemplates,
   saveAudit,
-  saveRequest,
   saveSignedDocument,
+  saveSubmission,
   saveTemplate,
-  consumeRateLimit,
-  deleteRequest,
   updateTemplateMetadata,
 } from './storage.js'
 
@@ -27,14 +30,22 @@ const templateInput = z.object({
   fields: z.array(z.record(z.string(), z.unknown())),
 })
 
-const requestInput = z.object({
-  templateId: z.string().min(1),
-  recipientEmail: z.string().email(),
-  expiresInDays: z.number().int().min(1).max(30).default(7),
+const submissionInput = z.object({
+  signedPdfBase64: z.string().min(1),
+  signerEmail: z.string().email().optional(),
+  consentAccepted: z.literal(true),
+  consentVersion: z.string().min(1).max(50),
+  consentAcceptedAt: z.string().datetime(),
+  signerUserAgent: z.string().max(500).optional(),
 })
 
 const maxPdfBytes = 25 * 1024 * 1024
-const adminRoles = new Set(['authenticated', 'admin'])
+const adminRoleValue = 'Admin'
+const aadTenantId = process.env.DOCULNK_AAD_TENANT_ID ?? ''
+const aadClientId = process.env.DOCULNK_AAD_CLIENT_ID ?? ''
+const aadJwks = aadTenantId
+  ? createRemoteJWKSet(new URL(`https://login.microsoftonline.com/${aadTenantId}/discovery/v2.0/keys`))
+  : null
 
 function decodePdf(value: string): Buffer {
   const bytes = Buffer.from(value, 'base64')
@@ -48,17 +59,24 @@ function requestIp(request: HttpRequest): string {
   return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
 }
 
-function requireAdmin(request: HttpRequest): HttpResponseInit | null {
-  const encoded = request.headers.get('x-ms-client-principal')
-  if (!encoded) return json({ error: 'Authentication required' }, 401)
+async function requireAdmin(request: HttpRequest): Promise<HttpResponseInit | null> {
+  const authHeader = request.headers.get('authorization')
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : null
+  if (!token || !aadJwks || !aadTenantId || !aadClientId) {
+    return json({ error: 'Authentication required' }, 401)
+  }
   try {
-    const principal = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8')) as { userRoles?: string[] }
-    if (!principal.userRoles?.some((role) => adminRoles.has(role))) {
+    const { payload } = await jwtVerify(token, aadJwks, {
+      issuer: `https://login.microsoftonline.com/${aadTenantId}/v2.0`,
+      audience: [aadClientId, `api://${aadClientId}`],
+    })
+    const roles = Array.isArray(payload.roles) ? (payload.roles as string[]) : []
+    if (!roles.includes(adminRoleValue)) {
       return json({ error: 'Administrator role required' }, 403)
     }
     return null
   } catch {
-    return json({ error: 'Invalid authentication context' }, 401)
+    return json({ error: 'Invalid or expired token' }, 401)
   }
 }
 
@@ -67,7 +85,7 @@ async function rateLimit(request: HttpRequest, limit = 20): Promise<HttpResponse
   return allowed ? null : json({ error: 'Too many attempts. Try again later.' }, 429)
 }
 
-async function audit(input: { requestId?: string; templateId?: string; action: string; actor: string; metadata?: string }): Promise<void> {
+async function audit(input: { submissionId?: string; templateId?: string; action: string; actor: string; metadata?: string }): Promise<void> {
   await withStorage(() => saveAudit({
     auditId: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
@@ -102,41 +120,43 @@ async function withStorage<T>(action: () => Promise<T>): Promise<T> {
   return action()
 }
 
+async function templatePayload(templateId: string) {
+  const template = await withStorage(() => getTemplate(templateId))
+  if (!template) return null
+  const pdfBytes = await withStorage(() => getTemplatePdf(template))
+  return {
+    templateId: template.templateId,
+    name: template.name,
+    pdfHash: template.pdfHash,
+    hashAlgorithm: template.hashAlgorithm,
+    fields: JSON.parse(template.fieldConfig),
+    pdfDataUrl: `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`,
+  }
+}
+
 app.http('templates-list', {
-  methods: ['GET'],
-  authLevel: 'anonymous',
-  route: 'templates',
+  methods: ['GET'], authLevel: 'anonymous', route: 'templates',
   handler: async (request) => {
-    const denied = requireAdmin(request)
+    const denied = await requireAdmin(request)
     return denied ?? json(await withStorage(listTemplates))
   },
 })
 
 app.http('templates-create', {
-  methods: ['POST'],
-  authLevel: 'anonymous',
-  route: 'templates',
+  methods: ['POST'], authLevel: 'anonymous', route: 'templates',
   handler: async (request) => {
     try {
-      const denied = requireAdmin(request)
+      const denied = await requireAdmin(request)
       if (denied) return denied
       const input = templateInput.parse(await readJson(request))
       const pdfBytes = decodePdf(input.pdfBase64)
       const actualHash = createHash('sha256').update(pdfBytes).digest('hex')
-      if (actualHash !== input.pdfHash.toLowerCase()) {
-        return json({ error: 'PDF hash does not match the uploaded bytes' }, 409)
-      }
-
+      if (actualHash !== input.pdfHash.toLowerCase()) return json({ error: 'PDF hash does not match the uploaded bytes' }, 409)
       const templateId = crypto.randomUUID()
       const template = {
-        templateId,
-        name: input.name,
-        pdfHash: actualHash,
-        hashAlgorithm: 'SHA-256' as const,
-        fieldConfig: JSON.stringify(input.fields),
-        pdfBlobName: `${templateId}.pdf`,
-        createdAt: new Date().toISOString(),
-        publishedAt: new Date().toISOString(),
+        templateId, name: input.name, pdfHash: actualHash, hashAlgorithm: 'SHA-256' as const,
+        fieldConfig: JSON.stringify(input.fields), pdfBlobName: `${templateId}.pdf`,
+        createdAt: new Date().toISOString(), publishedAt: new Date().toISOString(),
       }
       await withStorage(() => saveTemplate(template, pdfBytes))
       return json(template, 201)
@@ -147,29 +167,19 @@ app.http('templates-create', {
 })
 
 app.http('templates-get', {
-  methods: ['GET'],
-  authLevel: 'anonymous',
-  route: 'templates/{templateId}',
+  methods: ['GET'], authLevel: 'anonymous', route: 'templates/{templateId}',
   handler: async (request) => {
-    const denied = requireAdmin(request)
+    const denied = await requireAdmin(request)
     if (denied) return denied
-    const template = await withStorage(() => getTemplate(request.params.templateId))
-    if (!template) return json({ error: 'Template not found' }, 404)
-    const pdfBytes = await withStorage(() => getTemplatePdf(template))
-    return json({
-      ...template,
-      fields: JSON.parse(template.fieldConfig),
-      pdfDataUrl: `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`,
-    })
+    const payload = await templatePayload(request.params.templateId)
+    return payload ? json(payload) : json({ error: 'Template not found' }, 404)
   },
 })
 
 app.http('templates-update', {
-  methods: ['PUT'],
-  authLevel: 'anonymous',
-  route: 'templates/{templateId}',
+  methods: ['PUT'], authLevel: 'anonymous', route: 'templates/{templateId}',
   handler: async (request) => {
-    const denied = requireAdmin(request)
+    const denied = await requireAdmin(request)
     if (denied) return denied
     const template = await withStorage(() => getTemplate(request.params.templateId))
     if (!template) return json({ error: 'Template not found' }, 404)
@@ -180,173 +190,118 @@ app.http('templates-update', {
   },
 })
 
-app.http('requests-list', {
-  methods: ['GET'],
-  authLevel: 'anonymous',
-  route: 'requests',
+app.http('templates-delete', {
+  methods: ['DELETE'], authLevel: 'anonymous', route: 'templates/{templateId}',
   handler: async (request) => {
-    const denied = requireAdmin(request)
-    return denied ?? json(await withStorage(listRequests))
+    const denied = await requireAdmin(request)
+    if (denied) return denied
+    const template = await withStorage(() => getTemplate(request.params.templateId))
+    if (!template) return json({ error: 'Template not found' }, 404)
+    await withStorage(() => deleteTemplate(template))
+    await audit({ templateId: template.templateId, action: 'template.deleted', actor: requestIp(request) })
+    return json({ templateId: template.templateId, deleted: true })
   },
 })
 
-app.http('requests-create', {
-  methods: ['POST'],
-  authLevel: 'anonymous',
-  route: 'requests',
-  handler: async (request) => {
-    try {
-      const denied = requireAdmin(request)
-      if (denied) return denied
-      const limited = await rateLimit(request)
-      if (limited) return limited
-      const input = requestInput.parse(await readJson(request))
-      const template = await withStorage(() => getTemplate(input.templateId))
-      if (!template) {
-        return json({ error: 'Template not found' }, 404)
-      }
-
-      const requestId = crypto.randomUUID()
-      const record = {
-        requestId,
-        templateId: template.templateId,
-        templateHash: template.pdfHash,
-        recipientEmail: input.recipientEmail,
-        status: 'sent' as const,
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + input.expiresInDays * 86400000).toISOString(),
-      }
-      await withStorage(() => saveRequest(record))
-      await sendSigningInvitation({
-        recipientEmail: record.recipientEmail,
-        templateName: template.name,
-        requestId,
-        expiresAt: record.expiresAt,
-      })
-      await audit({ requestId, templateId: template.templateId, action: 'request.created', actor: input.recipientEmail })
-      return json(record, 201)
-    } catch (error) {
-      return json({ error: error instanceof Error ? error.message : 'Invalid request' }, 400)
-    }
-  },
-})
-
-app.http('requests-get', {
-  methods: ['GET'],
-  authLevel: 'anonymous',
-  route: 'public/requests/{requestId}',
+app.http('public-form-get', {
+  methods: ['GET'], authLevel: 'anonymous', route: 'public/forms/{templateId}',
   handler: async (request) => {
     const limited = await rateLimit(request)
     if (limited) return limited
-    const requestId = request.params.requestId
-    const record = await withStorage(() => getRequest(requestId))
-    if (!record || isExpired(record) || record.status === 'revoked' || record.status === 'completed') {
-      return json({ error: 'Signing request unavailable' }, 404)
+    const payload = await templatePayload(request.params.templateId)
+    return payload ? json(payload) : json({ error: 'Form not found' }, 404)
+  },
+})
+
+app.http('public-form-submit', {
+  methods: ['POST'], authLevel: 'anonymous', route: 'public/forms/{templateId}/submissions',
+  handler: async (request) => {
+    try {
+      const limited = await rateLimit(request)
+      if (limited) return limited
+      const template = await withStorage(() => getTemplate(request.params.templateId))
+      if (!template) return json({ error: 'Form not found' }, 404)
+      const input = submissionInput.parse(await readJson(request))
+      const pdfBytes = decodePdf(input.signedPdfBase64)
+      const submissionId = crypto.randomUUID()
+      const signedPdfHash = createHash('sha256').update(pdfBytes).digest('hex')
+      const signedBlobName = await withStorage(() => saveSignedDocument(submissionId, pdfBytes))
+      const createdAt = new Date().toISOString()
+      let submission: SubmissionRecord = {
+        submissionId, templateId: template.templateId, templateHash: template.pdfHash, createdAt,
+        signedAt: createdAt, signerEmail: input.signerEmail, signedBlobName, signedPdfHash,
+        consentVersion: input.consentVersion, consentAcceptedAt: input.consentAcceptedAt,
+        signerUserAgent: input.signerUserAgent, emailStatus: 'pending',
+      }
+      await withStorage(() => saveSubmission(submission))
+      await audit({ submissionId, templateId: template.templateId, action: 'submission.created', actor: requestIp(request), metadata: JSON.stringify({ signedPdfHash, consentVersion: input.consentVersion }) })
+      try {
+        await sendSubmissionToAdmin({ templateName: template.name, submissionId, signerEmail: input.signerEmail, pdfBytes })
+        submission = { ...submission, emailStatus: 'sent', emailError: undefined }
+      } catch (error) {
+        submission = { ...submission, emailStatus: 'failed', emailError: error instanceof Error ? error.message : 'Email delivery failed' }
+      }
+      await withStorage(() => saveSubmission(submission))
+      await audit({ submissionId, templateId: template.templateId, action: `submission.email_${submission.emailStatus}`, actor: 'system', metadata: submission.emailError })
+      return json({ ...submission, downloadUrl: `/api/public/submissions/${submissionId}/document` }, 201)
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : 'Unable to save submission' }, 400)
     }
-    const template = await withStorage(() => getTemplate(record.templateId))
-    if (!template || template.pdfHash !== record.templateHash) {
-      return json({ error: 'Template integrity check failed' }, 409)
+  },
+})
+
+app.http('submissions-list', {
+  methods: ['GET'], authLevel: 'anonymous', route: 'submissions',
+  handler: async (request) => {
+    const denied = await requireAdmin(request)
+    return denied ?? json(await withStorage(listSubmissions))
+  },
+})
+
+async function downloadSubmission(submissionId: string): Promise<HttpResponseInit> {
+  const submission = await withStorage(() => getSubmission(submissionId))
+  if (!submission) return json({ error: 'Submission not found' }, 404)
+  const pdfBytes = await withStorage(() => getSignedDocument(submissionId))
+  if (!pdfBytes) return json({ error: 'Signed document not found' }, 404)
+  return { status: 200, body: Buffer.from(pdfBytes), headers: { 'content-type': 'application/pdf', 'content-disposition': `attachment; filename="${submissionId}-signed.pdf"` } }
+}
+
+app.http('public-submission-download', {
+  methods: ['GET'], authLevel: 'anonymous', route: 'public/submissions/{submissionId}/document',
+  handler: async (request) => downloadSubmission(request.params.submissionId),
+})
+
+app.http('submissions-delete', {
+  methods: ['DELETE'], authLevel: 'anonymous', route: 'submissions/{submissionId}',
+  handler: async (request, context) => {
+    const denied = await requireAdmin(request)
+    if (denied) return denied
+    try {
+      const submission = await withStorage(() => getSubmission(request.params.submissionId))
+      if (!submission) return json({ error: 'Submission not found' }, 404)
+      await withStorage(() => deleteSubmission(submission.submissionId))
+      // The audit row outlives the document on purpose: the record that a
+      // submission existed and was deleted is what makes the trail meaningful.
+      await audit({
+        submissionId: submission.submissionId,
+        templateId: submission.templateId,
+        action: 'submission.deleted',
+        actor: requestIp(request),
+        metadata: JSON.stringify({ signedPdfHash: submission.signedPdfHash, signedAt: submission.signedAt }),
+      })
+      return json({ submissionId: submission.submissionId, deleted: true })
+    } catch (error) {
+      context.error('submission delete failed', error)
+      return json({ error: error instanceof Error ? error.message : 'Unable to delete this submission' }, 500)
     }
-    const viewedRecord = { ...record, status: 'viewed' as const, viewedAt: new Date().toISOString() }
-    await withStorage(() => saveRequest(viewedRecord))
-    const pdfBytes = await withStorage(() => getTemplatePdf(template))
-    await audit({ requestId, templateId: template.templateId, action: 'request.viewed', actor: requestIp(request) })
-    return json({
-      request: viewedRecord,
-      template: {
-        templateId: template.templateId,
-        name: template.name,
-        pdfHash: template.pdfHash,
-        hashAlgorithm: template.hashAlgorithm,
-        fields: JSON.parse(template.fieldConfig),
-        pdfDataUrl: `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`,
-      },
-    })
   },
 })
 
-app.http('requests-revoke', {
-  methods: ['POST'],
-  authLevel: 'anonymous',
-  route: 'requests/{requestId}/revoke',
+app.http('admin-submission-download', {
+  methods: ['GET'], authLevel: 'anonymous', route: 'submissions/{submissionId}/document',
   handler: async (request) => {
-    const denied = requireAdmin(request)
-    if (denied) return denied
-    const requestId = request.params.requestId
-    const record = await withStorage(() => getRequest(requestId))
-    if (!record) {
-      return json({ error: 'Request not found' }, 404)
-    }
-    const updated = { ...record, status: 'revoked' as const }
-    await withStorage(() => saveRequest(updated))
-    await audit({ requestId, templateId: record.templateId, action: 'request.revoked', actor: requestIp(request) })
-    return json(updated)
-  },
-})
-
-app.http('requests-delete', {
-  methods: ['DELETE'],
-  authLevel: 'anonymous',
-  route: 'requests/{requestId}',
-  handler: async (request) => {
-    const denied = requireAdmin(request)
-    if (denied) return denied
-    const requestId = request.params.requestId
-    const record = await withStorage(() => getRequest(requestId))
-    if (!record) return json({ error: 'Request not found' }, 404)
-    if (record.status !== 'revoked') return json({ error: 'Only revoked requests can be deleted' }, 409)
-    await withStorage(() => deleteRequest(requestId))
-    await audit({ requestId, templateId: record.templateId, action: 'request.deleted', actor: requestIp(request) })
-    return json({ requestId, deleted: true })
-  },
-})
-
-app.http('requests-resend', {
-  methods: ['POST'],
-  authLevel: 'anonymous',
-  route: 'requests/{requestId}/resend',
-  handler: async (request) => {
-    const denied = requireAdmin(request)
-    if (denied) return denied
-    const record = await withStorage(() => getRequest(request.params.requestId))
-    if (!record || record.status === 'completed' || record.status === 'revoked') return json({ error: 'Request cannot be resent' }, 409)
-    const template = await withStorage(() => getTemplate(record.templateId))
-    if (!template) return json({ error: 'Template not found' }, 404)
-    await sendSigningInvitation({ recipientEmail: record.recipientEmail, templateName: template.name, requestId: record.requestId, expiresAt: record.expiresAt })
-    await audit({ requestId: record.requestId, templateId: record.templateId, action: 'request.resent', actor: requestIp(request) })
-    return json(record)
-  },
-})
-
-app.http('requests-extend', {
-  methods: ['POST'],
-  authLevel: 'anonymous',
-  route: 'requests/{requestId}/extend',
-  handler: async (request) => {
-    const denied = requireAdmin(request)
-    if (denied) return denied
-    const record = await withStorage(() => getRequest(request.params.requestId))
-    if (!record || record.status === 'completed' || record.status === 'revoked') return json({ error: 'Request cannot be extended' }, 409)
-    const input = z.object({ days: z.number().int().min(1).max(30) }).parse(await readJson(request))
-    const updated = { ...record, expiresAt: new Date(Date.now() + input.days * 86400000).toISOString() }
-    await withStorage(() => saveRequest(updated))
-    await audit({ requestId: record.requestId, templateId: record.templateId, action: 'request.extended', actor: requestIp(request), metadata: `${input.days} days` })
-    return json(updated)
-  },
-})
-
-app.http('signed-download', {
-  methods: ['GET'],
-  authLevel: 'anonymous',
-  route: 'documents/{requestId}',
-  handler: async (request) => {
-    const denied = requireAdmin(request)
-    if (denied) return denied
-    const record = await withStorage(() => getRequest(request.params.requestId))
-    if (!record || record.status !== 'completed') return json({ error: 'Signed document not found' }, 404)
-    const pdfBytes = await withStorage(() => getSignedDocument(request.params.requestId))
-    if (!pdfBytes) return json({ error: 'Signed document not found' }, 404)
-    return { status: 200, body: Buffer.from(pdfBytes), headers: { 'content-type': 'application/pdf', 'content-disposition': `attachment; filename="${request.params.requestId}-signed.pdf"` } }
+    const denied = await requireAdmin(request)
+    return denied ?? downloadSubmission(request.params.submissionId)
   },
 })
 
@@ -355,77 +310,12 @@ app.timer('retention-cleanup', {
   handler: async () => {
     const retentionDays = Number(process.env.DOCULNK_RETENTION_DAYS ?? 365)
     const cutoff = Date.now() - retentionDays * 86400000
-    const requests = await withStorage(listRequests)
-    const { deleteSignedDocument } = await import('./storage.js')
-    for (const record of requests) {
-      if (record.status === 'completed' && record.signedAt && new Date(record.signedAt).getTime() < cutoff) {
-        await withStorage(() => deleteSignedDocument(record.requestId))
-        await audit({ requestId: record.requestId, templateId: record.templateId, action: 'document.retention_deleted', actor: 'retention-job', metadata: `retentionDays=${retentionDays}` })
+    const submissions = await withStorage(listSubmissions)
+    for (const submission of submissions) {
+      if (submission.signedAt && new Date(submission.signedAt).getTime() < cutoff) {
+        await withStorage(() => deleteSignedDocument(submission.submissionId))
+        await audit({ submissionId: submission.submissionId, templateId: submission.templateId, action: 'document.retention_deleted', actor: 'retention-job', metadata: `retentionDays=${retentionDays}` })
       }
-    }
-  },
-})
-
-app.http('requests-complete', {
-  methods: ['POST'],
-  authLevel: 'anonymous',
-  route: 'public/requests/{requestId}/complete',
-  handler: async (request) => {
-    try {
-      const limited = await rateLimit(request)
-      if (limited) return limited
-      const requestId = request.params.requestId
-      const record = await withStorage(() => getRequest(requestId))
-      if (!record || isExpired(record) || record.status === 'revoked' || record.status === 'completed') {
-        return json({ error: 'Signing request unavailable' }, 404)
-      }
-      const body = z.object({
-        signedPdfBase64: z.string().min(1),
-        consentAccepted: z.literal(true),
-        consentVersion: z.string().min(1).max(50),
-        consentAcceptedAt: z.string().datetime(),
-        signerUserAgent: z.string().max(500).optional(),
-      }).parse(await readJson(request))
-      const pdfBytes = decodePdf(body.signedPdfBase64)
-      const signedPdfHash = createHash('sha256').update(pdfBytes).digest('hex')
-      const signedBlobName = await withStorage(() => saveSignedDocument(requestId, pdfBytes))
-      const updated = {
-        ...record,
-        status: 'completed' as const,
-        signedAt: new Date().toISOString(),
-        signedBlobName,
-        signedPdfHash,
-        consentVersion: body.consentVersion,
-        consentAcceptedAt: body.consentAcceptedAt,
-        signerUserAgent: body.signerUserAgent,
-      }
-      await withStorage(() => saveRequest(updated))
-      await audit({
-        requestId,
-        templateId: record.templateId,
-        action: 'request.completed',
-        actor: record.recipientEmail,
-        metadata: JSON.stringify({
-          signedBlobName,
-          signedPdfHash,
-          consentAccepted: body.consentAccepted,
-          consentVersion: body.consentVersion,
-          consentAcceptedAt: body.consentAcceptedAt,
-          signerUserAgent: body.signerUserAgent,
-          signerIp: requestIp(request),
-        }),
-      })
-      const adminEmail = process.env.DOCULNK_ADMIN_EMAIL
-      if (adminEmail) {
-        await sendCompletionNotification({
-          recipientEmail: adminEmail,
-          templateName: record.templateId,
-          requestId,
-        })
-      }
-      return json(updated)
-    } catch (error) {
-      return json({ error: error instanceof Error ? error.message : 'Unable to complete request' }, 400)
     }
   },
 })

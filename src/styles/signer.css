@@ -1,0 +1,695 @@
+/*
+ * Signer surface. Everything here is expressed in tokens from tokens.css, and
+ * unlike the original stylesheet it has hover, focus, and transition states.
+ */
+
+/* ---------- shell ---------------------------------------------------- */
+
+.signer-shell {
+  padding-bottom: var(--space-12);
+}
+
+.signer-intro {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-subtle);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+/* The signer's document scrolls with the page: a nested scroller broke sticky
+   positioning and made scrollIntoView move the wrong box. */
+.signer-stage {
+  min-height: 0;
+  overflow: visible;
+}
+
+.signer-panel .pdf-page {
+  scroll-margin-block: 96px 72px;
+}
+
+/* ---------- action bar ------------------------------------------------ */
+
+.signer-action-bar {
+  position: sticky;
+  top: var(--space-3);
+  z-index: var(--z-bar);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  backdrop-filter: var(--blur-glass);
+  box-shadow: var(--shadow-md);
+}
+
+.signer-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.signer-progress strong {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.signer-progress-note {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.progress-meter {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-subtle);
+  overflow: hidden;
+}
+
+.progress-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+  transition: width var(--duration-slow) var(--ease-out);
+}
+
+.consent-receipt {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* ---------- fields ---------------------------------------------------- */
+
+.signer-field {
+  position: absolute;
+  z-index: var(--z-field);
+  display: flex;
+  align-items: center;
+  border: 1.5px solid var(--field-required);
+  border-radius: var(--radius-xs);
+  /* Barely tinted: the printed form underneath has to stay readable. A 55%
+     wash hid the very text the signer is agreeing to. */
+  background: rgba(37, 99, 235, 0.07);
+  transition:
+    border-color var(--duration-base) var(--ease-out),
+    background-color var(--duration-base) var(--ease-out),
+    box-shadow var(--duration-base) var(--ease-out);
+}
+
+.signer-field input,
+.signer-field .sign-here-button {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.signer-field input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin: auto;
+}
+
+.signer-field .sign-here-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: var(--font-script);
+  font-size: var(--text-md);
+  color: var(--color-accent-strong);
+}
+
+.signer-field .sign-here-button img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.signer-field[data-state='filled'] {
+  border-color: var(--field-complete);
+  background: rgba(34, 197, 94, 0.07);
+}
+
+/* The active field is the one exception: a stronger tint earns its keep by
+   showing where you are, and it is only ever one field at a time. */
+.signer-field[data-state='active'] {
+  border-color: var(--color-accent-strong);
+  background: rgba(191, 219, 254, 0.32);
+  box-shadow: var(--focus-ring);
+}
+
+.signer-field[data-state='invalid'] {
+  border-color: var(--field-invalid);
+  background: rgba(220, 38, 38, 0.10);
+  animation: field-nudge var(--duration-slow) var(--ease-out);
+}
+
+@keyframes field-nudge {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+
+/* the pointer */
+
+
+/* ---------- floating chip -------------------------------------------- */
+
+.signer-navigation {
+  position: fixed;
+  right: var(--space-6);
+  bottom: var(--space-6);
+  z-index: var(--z-chip);
+  animation: chip-in var(--duration-slow) var(--ease-spring);
+}
+
+@keyframes chip-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.chip-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-shadow: var(--shadow-accent);
+}
+
+/* ---------- dialogs --------------------------------------------------- */
+
+.adopt-dialog,
+.consent-dialog {
+  width: min(100%, 560px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  background: #ffffff;
+  color: var(--color-text);
+  box-shadow: var(--shadow-lg);
+}
+
+.adopt-dialog::backdrop,
+.consent-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.adopt-header h2,
+.consent-dialog h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+}
+
+.adopt-header p,
+.consent-dialog p {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-subtle);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.adopt-identity {
+  display: grid;
+  grid-template-columns: 1fr 120px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.adopt-identity label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-subtle);
+}
+
+.adopt-identity input {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 10px var(--space-3);
+  font-size: var(--text-base);
+  color: var(--color-text);
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.adopt-identity input:hover {
+  border-color: var(--color-border-strong);
+}
+
+.signature-mode-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin-bottom: var(--space-4);
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.signature-mode-tabs button {
+  border: 0;
+  border-radius: 6px;
+  padding: 6px var(--space-4);
+  background: transparent;
+  color: var(--color-text-subtle);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.signature-mode-tabs button:hover {
+  color: var(--color-text);
+}
+
+.signature-mode-tabs button.active {
+  background: #ffffff;
+  color: var(--color-accent-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.style-picker {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.style-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  border: 2px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  background: #ffffff;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out);
+}
+
+.style-option:hover {
+  border-color: var(--accent-200);
+  background: var(--surface-accent);
+}
+
+.style-option.selected {
+  border-color: var(--color-accent);
+  background: var(--surface-accent);
+}
+
+.style-name {
+  flex: 0 0 70px;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--color-text-muted);
+}
+
+.style-sample {
+  font-size: 26px;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draw-pads {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.draw-pad-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--color-text-muted);
+}
+
+.draw-pad-actions {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.signature-canvas {
+  display: block;
+  width: 100%;
+  height: 140px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.adopt-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 88px;
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-size: 40px;
+  color: var(--color-text);
+  overflow: hidden;
+}
+
+.adopt-legal {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  color: var(--color-text-muted);
+}
+
+.adopt-message {
+  margin: 0 0 var(--space-3);
+  color: var(--danger-700);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.adopt-actions,
+.consent-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.consent-links {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.consent-dialog .consent-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--color-text);
+}
+
+.consent-dialog .consent-row input {
+  margin-top: 2px;
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+/* ---------- messages, loading, completion ----------------------------- */
+
+/* Previously green regardless of tone, so errors read as success. */
+.submit-message {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.submit-message[data-tone='info'] {
+  background: var(--surface-accent);
+  color: var(--accent-700);
+}
+
+.submit-message[data-tone='error'] {
+  background: var(--danger-50);
+  color: var(--danger-700);
+}
+
+.submit-message[data-tone='success'] {
+  background: var(--success-50);
+  color: var(--success-700);
+}
+
+.pdf-loading,
+.signer-panel .pdf-error {
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.page-controls {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+
+.completion-panel {
+  text-align: center;
+  padding: var(--space-12) var(--space-6);
+}
+
+.completion-panel h1 {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--text-xl);
+}
+
+.completion-name {
+  margin: 0 0 var(--space-2);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.completion-note {
+  margin: 0 0 var(--space-6);
+  color: var(--color-text-subtle);
+  font-size: var(--text-sm);
+}
+
+.completion-hint {
+  margin: var(--space-4) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+/* ---------- shared interaction polish --------------------------------- */
+
+.primary-button,
+.secondary-button,
+.quiet-button,
+.danger-button {
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.primary-button:hover:not(:disabled) {
+  box-shadow: 0 12px 34px rgba(37, 99, 235, 0.28);
+  transform: translateY(-1px);
+}
+
+.secondary-button:hover:not(:disabled) {
+  background: var(--accent-100);
+}
+
+.quiet-button:hover:not(:disabled) {
+  color: var(--color-accent-strong);
+}
+
+.primary-button:active:not(:disabled),
+.secondary-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.zoom-controls button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signer-navigation,
+  .signer-field[data-state='invalid'],
+  .skeleton {
+    animation: none;
+  }
+
+  .primary-button:hover:not(:disabled) {
+    transform: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .adopt-identity,
+  .draw-pads {
+    grid-template-columns: 1fr;
+  }
+
+  .signer-navigation {
+    right: var(--space-4);
+    left: var(--space-4);
+    bottom: var(--space-4);
+  }
+
+  .chip-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .style-sample {
+    font-size: 20px;
+  }
+}
+
+/* ---------- bookmark rail --------------------------------------------- */
+
+/*
+ * Wraps the rail and the page. The rail must never live inside .pdf-page:
+ * field overlays are absolutely positioned against it, so any in-flow content
+ * there displaces the canvas but not the overlays, and every field drifts off
+ * its printed spot.
+ */
+.pdf-page-shell {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+/*
+ * Tabs in the page margin, one per row of fields. Tags used to float beside
+ * each field, covering the very text the signer is agreeing to, and on a dense
+ * form neighbouring tags collided into an unreadable pile.
+ */
+.bookmark-rail {
+  position: absolute;
+  top: 0;
+  right: 100%;
+  width: var(--bookmark-rail-width);
+  height: 100%;
+  pointer-events: none;
+}
+
+.field-bookmark {
+  position: absolute;
+  right: var(--space-2);
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: calc(var(--bookmark-rail-width) - var(--space-3));
+  padding: 4px var(--space-2) 4px 7px;
+  border: 1px solid var(--accent-200);
+  border-right: 0;
+  /* Flat against the page, rounded away from it: a tab, not a pill. */
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--accent-700);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.2;
+  text-align: right;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: var(--shadow-sm);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.field-bookmark:hover {
+  background: var(--surface-accent);
+  border-color: var(--color-accent);
+}
+
+.field-bookmark:active {
+  transform: translateY(-50%) scale(0.97);
+}
+
+.bookmark-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookmark-glyph {
+  flex: none;
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+
+.bookmark-count {
+  flex: none;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-100);
+  font-variant-numeric: tabular-nums;
+}
+
+.field-bookmark[data-state="active"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-weight: var(--weight-bold);
+}
+
+.field-bookmark[data-state="active"] .bookmark-count {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.field-bookmark[data-state="filled"] {
+  border-color: rgba(34, 197, 94, 0.4);
+  color: var(--success-700);
+}
+
+.field-bookmark[data-state="invalid"] {
+  border-color: var(--field-invalid);
+  background: var(--danger-50);
+  color: var(--danger-700);
+  font-weight: var(--weight-bold);
+}
+
+/* No margin to sit in on a narrow screen: the rail becomes a strip above the
+   page. It precedes .pdf-page in the shell, so normal flow places it there
+   without touching the overlays' positioning context. */
+@media (max-width: 640px) {
+  .bookmark-rail {
+    position: static;
+    width: auto;
+    height: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-bottom: var(--space-2);
+  }
+
+  .field-bookmark {
+    position: static;
+    transform: none;
+    right: auto;
+    max-width: none;
+    border-right: 1px solid var(--accent-200);
+    border-radius: var(--radius-sm);
+  }
+
+  .field-bookmark:active {
+    transform: scale(0.97);
+  }
+}

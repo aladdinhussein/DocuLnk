@@ -1,4 +1,5 @@
-import type { StoredSigningRequest } from './requestStore'
+import type { StoredSubmission } from './requestStore'
+import { getAccessToken } from './auth'
 
 export type RemoteTemplate = {
   templateId: string
@@ -19,11 +20,12 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error('Azure API is not configured. Set VITE_API_BASE_URL to enable it.')
   }
 
+  const token = await getAccessToken()
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...options,
-    credentials: 'include',
     headers: {
       'content-type': 'application/json',
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     },
   })
@@ -68,6 +70,14 @@ export async function updateRemoteTemplate(templateId: string, name: string, fie
   })
 }
 
+export async function deleteRemoteTemplate(templateId: string): Promise<void> {
+  await apiRequest(`/templates/${templateId}`, { method: 'DELETE' })
+}
+
+export async function deleteRemoteSubmission(submissionId: string): Promise<void> {
+  await apiRequest(`/submissions/${submissionId}`, { method: 'DELETE' })
+}
+
 export async function publishRemoteTemplate(file: File, template: {
   name: string
   pdfHash: string
@@ -90,70 +100,45 @@ export async function publishRemoteTemplate(file: File, template: {
   })
 }
 
-export async function listRemoteRequests(): Promise<StoredSigningRequest[]> {
-  return apiRequest<StoredSigningRequest[]>('/requests')
+export async function listRemoteSubmissions(): Promise<StoredSubmission[]> {
+  return apiRequest<StoredSubmission[]>('/submissions')
 }
 
-export async function createRemoteRequest(
-  templateId: string,
-  recipientEmail: string,
-  expiresInDays = 7,
-): Promise<StoredSigningRequest> {
-  return apiRequest<StoredSigningRequest>('/requests', {
-    method: 'POST',
-    body: JSON.stringify({ templateId, recipientEmail, expiresInDays }),
+export async function downloadRemoteDocument(submissionId: string, publicDownload = false): Promise<void> {
+  const prefix = publicDownload ? '/public/submissions' : '/submissions'
+  const token = publicDownload ? null : await getAccessToken()
+  const response = await fetch(`${apiBaseUrl}${prefix}/${submissionId}/document`, {
+    headers: token ? { authorization: `Bearer ${token}` } : undefined,
   })
-}
-
-export async function revokeRemoteRequest(requestId: string): Promise<StoredSigningRequest> {
-  return apiRequest<StoredSigningRequest>(`/requests/${requestId}/revoke`, { method: 'POST' })
-}
-
-export async function deleteRemoteRequest(requestId: string): Promise<void> {
-  await apiRequest(`/requests/${requestId}`, { method: 'DELETE' })
-}
-
-export async function resendRemoteRequest(requestId: string): Promise<StoredSigningRequest> {
-  return apiRequest<StoredSigningRequest>(`/requests/${requestId}/resend`, { method: 'POST' })
-}
-
-export async function extendRemoteRequest(requestId: string, days: number): Promise<StoredSigningRequest> {
-  return apiRequest<StoredSigningRequest>(`/requests/${requestId}/extend`, {
-    method: 'POST',
-    body: JSON.stringify({ days }),
-  })
-}
-
-export async function downloadRemoteDocument(requestId: string): Promise<void> {
-  const response = await fetch(`${apiBaseUrl}/documents/${requestId}`, { credentials: 'include' })
   if (!response.ok) throw new Error('Signed document unavailable')
   const blob = await response.blob()
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `${requestId}-signed.pdf`
+  anchor.download = `${submissionId}-signed.pdf`
   anchor.click()
   URL.revokeObjectURL(url)
 }
 
-export async function completeRemoteRequest(
-  requestId: string,
+export async function completeRemoteSubmission(
+  templateId: string,
   pdfBytes: Uint8Array,
   consentAccepted: boolean,
   consentVersion: string,
   consentAcceptedAt: string,
-): Promise<StoredSigningRequest> {
+  signerEmail?: string,
+): Promise<StoredSubmission> {
   let binary = ''
   pdfBytes.forEach((byte) => {
     binary += String.fromCharCode(byte)
   })
 
-  const response = await fetch(`${apiBaseUrl}/public/requests/${requestId}/complete`, {
+  const response = await fetch(`${apiBaseUrl}/public/forms/${templateId}/submissions`, {
     method: 'POST',
-    credentials: 'include',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       signedPdfBase64: btoa(binary),
+      signerEmail: signerEmail || undefined,
       consentAccepted,
       consentVersion,
       consentAcceptedAt,
@@ -163,9 +148,9 @@ export async function completeRemoteRequest(
   if (!response.ok) {
     throw new Error('Unable to save the signed document')
   }
-  return response.json() as Promise<StoredSigningRequest>
+  return response.json() as Promise<StoredSubmission>
 }
 
-export async function getRemoteRequest(requestId: string): Promise<StoredSigningRequest> {
-  return apiRequest<StoredSigningRequest>(`/public/requests/${requestId}`)
+export async function getRemoteForm(templateId: string): Promise<RemoteTemplate> {
+  return apiRequest<RemoteTemplate>(`/public/forms/${templateId}`)
 }
