@@ -593,10 +593,14 @@
   border-radius: 18px;
   padding: 20px;
   background: rgba(255, 255, 255, 0.78);
+  min-width: 0;
 }
 
 .signer-panel h2 {
   margin: 0 0 6px;
+  /* Template names have no spaces (e.g. "LFSC_AutoPay_..."), so without this
+     a long one overflows its box and widens the whole page on a phone. */
+  overflow-wrap: anywhere;
 }
 
 .signer-action-bar {
