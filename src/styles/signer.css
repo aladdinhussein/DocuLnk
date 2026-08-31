@@ -17,10 +17,15 @@
 }
 
 /* The signer's document scrolls with the page: a nested scroller broke sticky
-   positioning and made scrollIntoView move the wrong box. */
+   positioning and made scrollIntoView move the wrong box. Horizontal overflow
+   still needs containing though - dense forms force zoom above fit-to-width
+   to keep tiny fields tappable, and without this the oversized page bleeds
+   past the document stage and widens the whole app on a phone. */
 .signer-stage {
+  min-width: 0;
   min-height: 0;
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .signer-panel .pdf-page {
