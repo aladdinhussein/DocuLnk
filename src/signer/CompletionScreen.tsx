@@ -20,7 +20,13 @@ export default function CompletionScreen({
   return (
     <div className="app-shell signer-shell">
       <section className="signer-panel completion-panel" aria-live="polite">
-        <span className="thank-you-mark">✓</span>
+        <div className="signed-complete-mark" aria-hidden="true">
+          <svg viewBox="0 0 80 80">
+            <circle className="signed-complete-ring" cx="40" cy="40" r="36" />
+            <circle className="signed-complete-circle" cx="40" cy="40" r="36" />
+            <path className="signed-complete-check" d="M24 41l11 11 21-23" />
+          </svg>
+        </div>
         <h1>Your document has been signed</h1>
         <p className="completion-name">{documentName}</p>
         <p className="completion-note">
