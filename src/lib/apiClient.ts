@@ -63,10 +63,30 @@ export async function getRemoteTemplate(templateId: string): Promise<RemoteTempl
   return apiRequest<RemoteTemplate>(`/templates/${templateId}`)
 }
 
-export async function updateRemoteTemplate(templateId: string, name: string, fields: unknown[]): Promise<void> {
+async function fileToBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  let binary = ''
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte)
+  })
+  return btoa(binary)
+}
+
+export async function updateRemoteTemplate(
+  templateId: string,
+  name: string,
+  fields: unknown[],
+  replacementPdf?: { file: File; pdfHash: string },
+): Promise<void> {
   await apiRequest(`/templates/${templateId}`, {
     method: 'PUT',
-    body: JSON.stringify({ name, fields }),
+    body: JSON.stringify({
+      name,
+      fields,
+      ...(replacementPdf
+        ? { pdfBase64: await fileToBase64(replacementPdf.file), pdfHash: replacementPdf.pdfHash }
+        : {}),
+    }),
   })
 }
 
@@ -83,17 +103,11 @@ export async function publishRemoteTemplate(file: File, template: {
   pdfHash: string
   fields: unknown[]
 }): Promise<void> {
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  let binary = ''
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte)
-  })
-
   await apiRequest('/templates', {
     method: 'POST',
     body: JSON.stringify({
       name: template.name,
-      pdfBase64: btoa(binary),
+      pdfBase64: await fileToBase64(file),
       pdfHash: template.pdfHash,
       fields: template.fields,
     }),

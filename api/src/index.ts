@@ -176,17 +176,44 @@ app.http('templates-get', {
   },
 })
 
+const templateUpdateInput = z.object({
+  name: z.string().min(1).max(200),
+  fields: z.array(z.record(z.string(), z.unknown())),
+  pdfBase64: z.string().min(1).optional(),
+  pdfHash: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+})
+
 app.http('templates-update', {
   methods: ['PUT'], authLevel: 'anonymous', route: 'templates/{templateId}',
   handler: async (request) => {
-    const denied = await requireAdmin(request)
-    if (denied) return denied
-    const template = await withStorage(() => getTemplate(request.params.templateId))
-    if (!template) return json({ error: 'Template not found' }, 404)
-    const input = z.object({ name: z.string().min(1).max(200), fields: z.array(z.record(z.string(), z.unknown())) }).parse(await readJson(request))
-    const updated = { ...template, name: input.name, fieldConfig: JSON.stringify(input.fields), publishedAt: new Date().toISOString() }
-    await withStorage(() => updateTemplateMetadata(updated))
-    return json(updated)
+    try {
+      const denied = await requireAdmin(request)
+      if (denied) return denied
+      const template = await withStorage(() => getTemplate(request.params.templateId))
+      if (!template) return json({ error: 'Template not found' }, 404)
+      const input = templateUpdateInput.parse(await readJson(request))
+
+      if (input.pdfBase64) {
+        if (!input.pdfHash) return json({ error: 'pdfHash is required when replacing the PDF' }, 400)
+        const pdfBytes = decodePdf(input.pdfBase64)
+        const actualHash = createHash('sha256').update(pdfBytes).digest('hex')
+        if (actualHash !== input.pdfHash.toLowerCase()) return json({ error: 'PDF hash does not match the uploaded bytes' }, 409)
+        // Same templateId and blob name, so this overwrites the existing record and file
+        // in place instead of creating a new template with its own URL.
+        const updated = {
+          ...template, name: input.name, pdfHash: actualHash, hashAlgorithm: 'SHA-256' as const,
+          fieldConfig: JSON.stringify(input.fields), publishedAt: new Date().toISOString(),
+        }
+        await withStorage(() => saveTemplate(updated, pdfBytes))
+        return json(updated)
+      }
+
+      const updated = { ...template, name: input.name, fieldConfig: JSON.stringify(input.fields), publishedAt: new Date().toISOString() }
+      await withStorage(() => updateTemplateMetadata(updated))
+      return json(updated)
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : 'Invalid update' }, 400)
+    }
   },
 })
 

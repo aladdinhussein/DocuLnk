@@ -50,13 +50,16 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
   const [isPublished, setIsPublished] = useState(Boolean(editing))
   const [requestLink, setRequestLink] = useState('')
   const [linkCopied, setLinkCopied] = useState(false)
-  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(editing?.template.templateId ?? null)
+  const [editingTemplateId] = useState<string | null>(editing?.template.templateId ?? null)
   const [currentTemplateId, setCurrentTemplateId] = useState<string>(
     () => editing?.template.templateId ?? crypto.randomUUID(),
   )
   const [zoom, setZoom] = useState(1)
   const [fieldsHidden, setFieldsHidden] = useState(false)
   const interactionRef = useRef<FieldInteraction | null>(null)
+  // Whether the PDF was swapped out while editing an already-published template,
+  // so publishing needs to re-upload it and refresh the stored hash.
+  const [pdfReplaced, setPdfReplaced] = useState(false)
 
   useEffect(() => {
     if (!file) {
@@ -180,8 +183,13 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
     }
 
     setFile(selectedFile)
-    setCurrentTemplateId(crypto.randomUUID())
-    setEditingTemplateId(null)
+    // Replacing the PDF on an already-published template must keep updating
+    // that same record (and its public URL), not mint a new templateId.
+    if (editingTemplateId) {
+      setPdfReplaced(true)
+    } else {
+      setCurrentTemplateId(crypto.randomUUID())
+    }
     setPdfError('')
     setPdfPageCount(0)
     setPublishMessage('')
@@ -418,7 +426,12 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
 
     if (apiEnabled) {
       if (editingTemplateId) {
-        await updateRemoteTemplate(editingTemplateId, metadata.name, metadata.fields)
+        await updateRemoteTemplate(
+          editingTemplateId,
+          metadata.name,
+          metadata.fields,
+          pdfReplaced ? { file, pdfHash: metadata.pdfHash } : undefined,
+        )
       } else {
         await publishRemoteTemplate(file, {
           name: metadata.name,
@@ -433,6 +446,7 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
     onPublished(publishedMetadata)
     setPublishMessage('Template published and saved in this browser.')
     setIsPublished(true)
+    setPdfReplaced(false)
   }
 
 
