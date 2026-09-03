@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { TemplateField } from '../types'
 import {
+  applySignerValue,
   incompleteRequiredFields,
+  isEffectivelyRequired,
   isFieldFilled,
+  nextUnfilledField,
   requiredFieldsComplete,
   signerProgress,
   sortSignerFields,
@@ -117,5 +120,115 @@ describe('signerProgress', () => {
     ]
 
     expect(signerProgress(fields, { a: 'Jane', c: 'ignored' })).toEqual({ done: 1, total: 2 })
+  })
+
+  it('leaves out a field whose controlling checkbox is unticked', () => {
+    const fields = [
+      field({ id: 'has-spouse', type: 'checkbox', required: false }),
+      field({ id: 'spouse-name', requiredWhenFieldId: 'has-spouse' }),
+      field({ id: 'name' }),
+    ]
+
+    expect(signerProgress(fields, {})).toEqual({ done: 0, total: 1 })
+    expect(signerProgress(fields, { 'has-spouse': 'true' })).toEqual({ done: 0, total: 2 })
+  })
+
+  it('counts a choice group once', () => {
+    const fields = [
+      field({ id: 'basic', type: 'checkbox', group: 'plan' }),
+      field({ id: 'premium', type: 'checkbox', group: 'plan' }),
+    ]
+
+    expect(signerProgress(fields, {})).toEqual({ done: 0, total: 1 })
+    expect(signerProgress(fields, { premium: 'true' })).toEqual({ done: 1, total: 1 })
+  })
+})
+
+describe('isEffectivelyRequired', () => {
+  const controller = field({ id: 'has-spouse', type: 'checkbox', required: false })
+  const dependent = field({ id: 'spouse-name', requiredWhenFieldId: 'has-spouse' })
+  const fields = [controller, dependent]
+
+  it('is required only while the controlling checkbox is ticked', () => {
+    expect(isEffectivelyRequired(dependent, fields, {})).toBe(false)
+    expect(isEffectivelyRequired(dependent, fields, { 'has-spouse': 'false' })).toBe(false)
+    expect(isEffectivelyRequired(dependent, fields, { 'has-spouse': 'true' })).toBe(true)
+  })
+
+  it('never makes an optional field required', () => {
+    const optional = field({ id: 'note', required: false, requiredWhenFieldId: 'has-spouse' })
+    expect(isEffectivelyRequired(optional, [controller, optional], { 'has-spouse': 'true' })).toBe(false)
+  })
+
+  it('falls back to always required when the controller is missing', () => {
+    expect(isEffectivelyRequired(dependent, [dependent], {})).toBe(true)
+  })
+
+  it('falls back to always required when the controller is not a checkbox', () => {
+    const textController = field({ id: 'has-spouse', type: 'text' })
+    expect(isEffectivelyRequired(dependent, [textController, dependent], {})).toBe(true)
+  })
+
+  it('ignores a field that references itself', () => {
+    const selfReferencing = field({ id: 'loop', type: 'checkbox', requiredWhenFieldId: 'loop' })
+    expect(isEffectivelyRequired(selfReferencing, [selfReferencing], {})).toBe(true)
+  })
+})
+
+describe('conditionally required fields', () => {
+  const fields = [
+    field({ id: 'has-spouse', type: 'checkbox', required: false, y: 10 }),
+    field({ id: 'spouse-name', requiredWhenFieldId: 'has-spouse', y: 20 }),
+  ]
+
+  it('does not block finishing while the checkbox is unticked', () => {
+    expect(requiredFieldsComplete(fields, {})).toBe(true)
+  })
+
+  it('blocks finishing once the checkbox is ticked and the field is empty', () => {
+    expect(incompleteRequiredFields(fields, { 'has-spouse': 'true' }).map((entry) => entry.id))
+      .toEqual(['spouse-name'])
+  })
+
+  it('releases the field again when the checkbox is unticked', () => {
+    expect(requiredFieldsComplete(fields, { 'has-spouse': 'false' })).toBe(true)
+  })
+})
+
+describe('checkbox groups', () => {
+  const fields = [
+    field({ id: 'basic', type: 'checkbox', group: 'plan', y: 10 }),
+    field({ id: 'premium', type: 'checkbox', group: 'plan', y: 20 }),
+    field({ id: 'newsletter', type: 'checkbox', required: false, y: 30 }),
+  ]
+
+  it('reports a missing group once, by its first option', () => {
+    expect(incompleteRequiredFields(fields, {}).map((entry) => entry.id)).toEqual(['basic'])
+  })
+
+  it('is satisfied by any single option', () => {
+    expect(requiredFieldsComplete(fields, { premium: 'true' })).toBe(true)
+  })
+
+  it('ticking one option clears the others in the group', () => {
+    const values = applySignerValue(fields, { basic: 'true', newsletter: 'true' }, 'premium', 'true')
+
+    expect(values).toEqual({ basic: 'false', newsletter: 'true', premium: 'true' })
+  })
+
+  it('unticking an option leaves the rest of the group alone', () => {
+    const values = applySignerValue(fields, { basic: 'true' }, 'basic', 'false')
+
+    expect(values).toEqual({ basic: 'false' })
+  })
+
+  it('does not treat ungrouped checkboxes as exclusive', () => {
+    const values = applySignerValue(fields, { basic: 'true' }, 'newsletter', 'true')
+
+    expect(values).toEqual({ basic: 'true', newsletter: 'true' })
+  })
+
+  it('skips the remaining options once a choice is made', () => {
+    expect(nextUnfilledField(fields, { basic: 'true' })?.id).toBe('newsletter')
   })
 })

@@ -10,6 +10,8 @@ type SignerFieldProps = {
   zoom: number
   isActive: boolean
   isInvalid: boolean
+  /** Whether the field is required right now, conditions already evaluated. */
+  required: boolean
   locked: boolean
   hasSignature: boolean
   registerRef: (element: HTMLInputElement | HTMLButtonElement | null) => void
@@ -30,6 +32,7 @@ export default function SignerField({
   zoom,
   isActive,
   isInvalid,
+  required,
   locked,
   hasSignature,
   registerRef,
@@ -74,7 +77,8 @@ export default function SignerField({
           ref={registerRef}
           disabled={locked}
           checked={value === 'true'}
-          aria-label={field.label}
+          name={field.group || undefined}
+          aria-label={field.group ? `${field.label}, ${field.group}` : field.label}
           aria-invalid={isInvalid || undefined}
           aria-describedby={isInvalid ? errorId : undefined}
           onFocus={onFocus}
@@ -85,7 +89,7 @@ export default function SignerField({
           type={field.type === 'date' ? 'date' : 'text'}
           ref={registerRef}
           disabled={locked}
-          required={field.required}
+          required={required}
           value={value ?? ''}
           aria-label={field.label}
           aria-invalid={isInvalid || undefined}

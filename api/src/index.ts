@@ -263,7 +263,7 @@ app.http('public-form-submit', {
       await withStorage(() => saveSubmission(submission))
       await audit({ submissionId, templateId: template.templateId, action: 'submission.created', actor: requestIp(request), metadata: JSON.stringify({ signedPdfHash, consentVersion: input.consentVersion }) })
       try {
-        await sendSubmissionToAdmin({ templateName: template.name, submissionId, signerEmail: input.signerEmail, pdfBytes })
+        await sendSubmissionToAdmin({ templateName: template.name, submissionId, signerEmail: input.signerEmail, signedAt: createdAt, pdfBytes })
         submission = { ...submission, emailStatus: 'sent', emailError: undefined }
       } catch (error) {
         submission = { ...submission, emailStatus: 'failed', emailError: error instanceof Error ? error.message : 'Email delivery failed' }

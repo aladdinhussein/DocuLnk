@@ -27,7 +27,9 @@ import FieldBookmarks from '../signer/FieldBookmarks'
 import { BOOKMARK_RAIL_PX, planBookmarks } from '../signer/fieldTagLayout'
 import { useSignerSession } from '../signer/useSignerSession'
 import {
+  applySignerValue,
   incompleteRequiredFields,
+  isEffectivelyRequired,
   isFieldFilled,
   nextUnfilledField,
   signerProgress,
@@ -52,7 +54,7 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
   const [signerValues, setSignerValues] = useState<Record<string, string>>({})
   const [signerEmail, setSignerEmail] = useState('')
   const [activeFieldId, setActiveFieldId] = useState('')
-  const [invalidFieldIds, setInvalidFieldIds] = useState<Set<string>>(new Set())
+  const [flaggedFieldIds, setInvalidFieldIds] = useState<Set<string>>(new Set())
   const [notice, setNotice] = useState<Notice>(null)
   const [started, setStarted] = useState(false)
   const visitedRef = useRef<Set<string>>(new Set())
@@ -84,6 +86,16 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
   const progress = signerProgress(fields, signerValues)
   const locked = isSubmitting || Boolean(completed)
 
+  // A flag only shows while the field is still genuinely missing. Unticking a
+  // controlling checkbox makes its dependents optional, and choosing one option
+  // satisfies its whole group, so flags on those fields must fall away without
+  // the signer having to touch each one.
+  const invalidFieldIds = useMemo(() => {
+    if (flaggedFieldIds.size === 0) return flaggedFieldIds
+    const missing = new Set(incompleteRequiredFields(fields, signerValues).map((field) => field.id))
+    return new Set([...flaggedFieldIds].filter((id) => missing.has(id)))
+  }, [flaggedFieldIds, fields, signerValues])
+
   // One bookmark per row of fields, planned across the whole page.
   const bookmarks = useMemo(
     () => planBookmarks(fields, signerValues, activeFieldId, invalidFieldIds),
@@ -113,14 +125,16 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
   }, [])
 
   const setFieldValue = useCallback((fieldId: string, value: string) => {
-    setSignerValues((current) => ({ ...current, [fieldId]: value }))
+    setSignerValues(
+      (current) => applySignerValue(fields, current, fieldId, value) as Record<string, string>,
+    )
     setInvalidFieldIds((current) => {
       if (!current.has(fieldId)) return current
       const next = new Set(current)
       next.delete(fieldId)
       return next
     })
-  }, [])
+  }, [fields])
 
   /**
    * Bring a field up to a comfortable size before focusing it.
@@ -480,6 +494,7 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
                         zoom={zoom}
                         isActive={activeFieldId === field.id}
                         isInvalid={invalidFieldIds.has(field.id)}
+                        required={isEffectivelyRequired(field, fields, signerValues)}
                         locked={locked}
                         hasSignature={Boolean(adopted)}
                         registerRef={(element) => { fieldRefs.current[field.id] = element }}

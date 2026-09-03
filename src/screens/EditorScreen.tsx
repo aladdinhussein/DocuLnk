@@ -17,11 +17,28 @@ const defaultFieldForm = {
   label: 'Client name',
   type: 'text' as FieldType,
   required: true,
+  /** Id of the controlling checkbox, or '' for always required. */
+  requiredWhenFieldId: '',
+  /** Single-selection group name for checkboxes, or '' for none. */
+  group: '',
   x: 120,
   y: 150,
   width: 210,
   height: 26,
   page: 1,
+}
+
+/** The field list's one-line summary: "checkbox · required when Has dependents · group: Plan". */
+function describeFieldRules(field: TemplateField, fields: TemplateField[]): string {
+  const controller = field.requiredWhenFieldId
+    ? fields.find((entry) => entry.id === field.requiredWhenFieldId)
+    : undefined
+  const parts = [
+    field.type,
+    !field.required ? 'optional' : controller ? `required when ${controller.label}` : 'required',
+  ]
+  if (field.group) parts.push(`group: ${field.group}`)
+  return parts.join(' · ')
 }
 
 export type EditorSeed =
@@ -203,12 +220,38 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
     setFieldForm(defaultFieldForm)
   }
 
+  /**
+   * The condition and group from the form as they should be stored. Only a
+   * checkbox can belong to a group, and a condition must name a checkbox that
+   * still exists and is not the field itself.
+   */
+  const rulesFromForm = (fieldId: string | null) => {
+    const controller = templateFields.find(
+      (field) =>
+        field.id === fieldForm.requiredWhenFieldId && field.type === 'checkbox' && field.id !== fieldId,
+    )
+    const group = fieldForm.type === 'checkbox' ? fieldForm.group.trim() : ''
+    return {
+      requiredWhenFieldId: fieldForm.required && controller ? controller.id : undefined,
+      group: group || undefined,
+    }
+  }
+
+  /** Drop any condition pointing at a field that no longer is a checkbox. */
+  const detachDependents = (fields: TemplateField[], controllerId: string): TemplateField[] =>
+    fields.map((field) => {
+      if (field.requiredWhenFieldId !== controllerId) return field
+      const { requiredWhenFieldId: _removed, ...rest } = field
+      return rest
+    })
+
   const addField = () => {
     const newField: TemplateField = {
       id: crypto.randomUUID(),
       label: fieldForm.label || 'New field',
       type: fieldForm.type,
       required: fieldForm.required,
+      ...rulesFromForm(null),
       x: fieldForm.x,
       y: fieldForm.y,
       width: fieldForm.width,
@@ -261,7 +304,9 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
   }
 
   const removeField = (fieldId: string) => {
-    commitFields(templateFields.filter((field) => field.id !== fieldId))
+    // Fields that were required only when this checkbox was ticked go back to
+    // being plainly required, rather than keeping a reference to nothing.
+    commitFields(detachDependents(templateFields.filter((field) => field.id !== fieldId), fieldId))
     if (selectedFieldId === fieldId) {
       setSelectedFieldId(null)
       setFieldForm(defaultFieldForm)
@@ -274,6 +319,8 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
       label: field.label,
       type: field.type,
       required: field.required,
+      requiredWhenFieldId: field.requiredWhenFieldId ?? '',
+      group: field.group ?? '',
       x: field.x,
       y: field.y,
       width: field.width,
@@ -287,21 +334,26 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
       return
     }
 
+    const rules = rulesFromForm(selectedFieldId)
+    const updated = templateFields.map((field) => {
+      if (field.id !== selectedFieldId) return field
+      const { requiredWhenFieldId: _condition, group: _group, ...rest } = field
+      return {
+        ...rest,
+        label: fieldForm.label || 'Untitled field',
+        type: fieldForm.type,
+        required: fieldForm.required,
+        ...rules,
+        x: Math.max(0, fieldForm.x),
+        y: Math.max(0, fieldForm.y),
+        ...clampFieldSize(fieldForm.type, fieldForm.width, fieldForm.height),
+        page: Math.max(1, Math.min(pdfPageCount || 1, fieldForm.page)),
+      }
+    })
+
+    // A field retyped away from checkbox can no longer control anything.
     commitFields(
-      templateFields.map((field) =>
-        field.id === selectedFieldId
-          ? {
-              ...field,
-              label: fieldForm.label || 'Untitled field',
-              type: fieldForm.type,
-              required: fieldForm.required,
-              x: Math.max(0, fieldForm.x),
-              y: Math.max(0, fieldForm.y),
-              ...clampFieldSize(fieldForm.type, fieldForm.width, fieldForm.height),
-              page: Math.max(1, Math.min(pdfPageCount || 1, fieldForm.page)),
-            }
-          : field,
-      ),
+      fieldForm.type === 'checkbox' ? updated : detachDependents(updated, selectedFieldId),
     )
   }
 
@@ -402,6 +454,14 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
   }
 
 
+
+  // Checkboxes that can gate the field being edited or added.
+  const controllerOptions = templateFields.filter(
+    (field) => field.type === 'checkbox' && field.id !== selectedFieldId,
+  )
+  const existingGroups = Array.from(
+    new Set(templateFields.map((field) => field.group).filter((group): group is string => Boolean(group))),
+  )
 
   const publishTemplate = async () => {
     if (!file || !fileHash) {
@@ -669,6 +729,41 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
               </label>
             </div>
 
+            {fieldForm.required && controllerOptions.length > 0 && (
+              <label>
+                Required only when this checkbox is ticked
+                <select
+                  value={fieldForm.requiredWhenFieldId}
+                  onChange={(event) => updateFieldForm('requiredWhenFieldId', event.target.value)}
+                >
+                  <option value="">Always required</option>
+                  {controllerOptions.map((checkbox) => (
+                    <option key={checkbox.id} value={checkbox.id}>
+                      {checkbox.label}{checkbox.group ? ` (${checkbox.group})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {fieldForm.type === 'checkbox' && (
+              <label>
+                Choice group
+                <input
+                  list="checkbox-group-options"
+                  value={fieldForm.group}
+                  placeholder="Leave empty for a standalone checkbox"
+                  onChange={(event) => updateFieldForm('group', event.target.value)}
+                />
+                <datalist id="checkbox-group-options">
+                  {existingGroups.map((group) => <option key={group} value={group} />)}
+                </datalist>
+                <span className="field-hint">
+                  Checkboxes in the same group allow a single selection, like radio buttons.
+                </span>
+              </label>
+            )}
+
             {/*
               Numeric placement, because dragging a small checkbox onto a
               pre-printed box on the form is guesswork. Values are in the same
@@ -752,9 +847,7 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
               <div key={field.id} className="field-item">
                 <div>
                   <strong>{field.label}</strong>
-                  <span>
-                    {field.type} · {field.required ? 'required' : 'optional'}
-                  </span>
+                  <span>{describeFieldRules(field, templateFields)}</span>
                 </div>
                 <div className="field-item-actions">
                   <button type="button" onClick={() => duplicateField(field)}>Duplicate</button>
