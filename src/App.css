@@ -556,26 +556,8 @@
   margin: 0 0 10px;
 }
 
-.centered-message p,
-.signer-intro {
+.centered-message p {
   color: #64748b;
-}
-
-.signer-email-field {
-  display: grid;
-  gap: 6px;
-  margin-top: 18px;
-  color: #475569;
-  font-size: 13px;
-}
-
-.signer-email-field input {
-  width: 100%;
-  border: 1px solid #dbe3ef;
-  border-radius: 10px;
-  background: white;
-  padding: 10px 12px;
-  color: #172033;
 }
 
 .auth-button {
@@ -601,39 +583,6 @@
   /* Template names have no spaces (e.g. "LFSC_AutoPay_..."), so without this
      a long one overflows its box and widens the whole page on a phone. */
   overflow-wrap: anywhere;
-}
-
-.signer-action-bar {
-  position: sticky;
-  top: 12px;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 18px 0 20px;
-  padding: 12px 14px;
-  border: 1px solid #bfdbfe;
-  border-radius: 12px;
-  background: rgba(239, 246, 255, 0.96);
-  box-shadow: 0 10px 24px rgba(30, 64, 175, 0.12);
-  backdrop-filter: blur(12px);
-}
-
-.signer-action-bar-complete {
-  justify-content: center;
-  border-color: #86efac;
-  background: #f0fdf4;
-  color: #166534;
-}
-
-.signer-action-bar .primary-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.65;
-}
-
-.signer-action-bar .primary-button:disabled:not(:empty) {
-  background: #94a3b8;
-  box-shadow: none;
 }
 
 .submission-complete-banner {
@@ -662,19 +611,6 @@
   margin-top: 3px;
   color: #166534;
   font-size: 13px;
-}
-
-.signer-progress {
-  display: grid;
-  min-width: 120px;
-  gap: 2px;
-  color: #1e3a8a;
-  font-size: 12px;
-}
-
-.signer-progress span {
-  color: #64748b;
-  font-size: 11px;
 }
 
 .signature-setup-card {
@@ -1111,25 +1047,6 @@
     bottom: 16px;
     left: 16px;
     min-width: 0;
-  }
-
-  .signer-action-bar {
-    align-items: stretch;
-    flex-wrap: wrap;
-  }
-
-  .signer-progress {
-    flex: 1 1 100%;
-  }
-
-  .action-consent {
-    margin-left: 0;
-    flex: 1 1 100%;
-  }
-
-  .signer-action-bar .secondary-button,
-  .signer-action-bar .primary-button {
-    flex: 1 1 0;
   }
 
   .request-row {

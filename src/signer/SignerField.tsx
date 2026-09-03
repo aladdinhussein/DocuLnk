@@ -1,6 +1,7 @@
 import type { TemplateField } from '../types'
-import { FIELD_VERB, isFieldFilled } from './signerFieldModel'
-import { fieldBoxStyle } from '../pdf/fieldGeometry'
+import { FIELD_VERB, describedBy, fieldErrorText, isFieldFilled } from './signerFieldModel'
+import { calloutPlacement, fieldBoxStyle } from '../pdf/fieldGeometry'
+import FieldCallout from './FieldCallout'
 
 export type FieldState = 'pending' | 'active' | 'filled' | 'invalid' | 'inactive'
 
@@ -17,6 +18,10 @@ type SignerFieldProps = {
    * checkbox is unticked is shown greyed and cannot be filled.
    */
   applicable: boolean
+  /** Label of the checkbox that governs this field, when it has one. */
+  controllerLabel?: string
+  /** Rendered page width, so callouts can stop at the page's right edge. */
+  pageWidthPx: number
   locked: boolean
   hasSignature: boolean
   registerRef: (element: HTMLInputElement | HTMLButtonElement | null) => void
@@ -45,6 +50,8 @@ export default function SignerField({
   isInvalid,
   required,
   applicable,
+  controllerLabel,
+  pageWidthPx,
   locked,
   hasSignature,
   registerRef,
@@ -58,23 +65,37 @@ export default function SignerField({
   const verb = FIELD_VERB[field.type]
   const isImageField = field.type === 'signature' || field.type === 'initials'
   const errorId = `${field.id}-error`
+  const hintId = `${field.id}-hint`
+  const requirement = required ? 'required' : 'optional'
+
+  // Only rendered while inapplicable, so the reason travels with the grey box.
+  const inactiveHint = !applicable
+    ? `Applies only if '${controllerLabel ?? 'the related box'}' is checked`
+    : undefined
+  const title = inactiveHint ?? field.label
+  const describe = describedBy(isInvalid && errorId, !applicable && hintId)
+
+  const placement = calloutPlacement(field.y * zoom)
+  const calloutWidth = pageWidthPx - field.x * zoom
 
   return (
     <div
       className={`signer-field field-${field.type}`}
       data-state={state}
+      data-required={required}
+      data-active={isActive || undefined}
       style={fieldBoxStyle(field, zoom)}
     >
-
       {isImageField ? (
         <button
           type="button"
           className="sign-here-button"
           ref={registerRef}
           disabled={disabled}
-          aria-label={`${verb} ${field.label}`}
+          title={title}
+          aria-label={`${verb} ${field.label}, ${requirement}`}
           aria-invalid={isInvalid || undefined}
-          aria-describedby={isInvalid ? errorId : undefined}
+          aria-describedby={describe}
           onFocus={onFocus}
           onClick={onRequestSignature}
         >
@@ -91,9 +112,11 @@ export default function SignerField({
           disabled={disabled}
           checked={value === 'true'}
           name={field.group || undefined}
+          title={title}
           aria-label={field.group ? `${field.label}, ${field.group}` : field.label}
+          aria-required={required || undefined}
           aria-invalid={isInvalid || undefined}
-          aria-describedby={isInvalid ? errorId : undefined}
+          aria-describedby={describe}
           onFocus={onFocus}
           onChange={(event) => onChange(String(event.target.checked))}
         />
@@ -104,13 +127,43 @@ export default function SignerField({
           disabled={disabled}
           required={required}
           value={value ?? ''}
+          // A date input ignores placeholder, so its name rides on the callout.
+          placeholder={field.type === 'text' ? field.label : undefined}
+          title={title}
           aria-label={field.label}
+          aria-required={required || undefined}
           aria-invalid={isInvalid || undefined}
-          aria-describedby={isInvalid ? errorId : undefined}
+          aria-describedby={describe}
           onFocus={onFocus}
           onChange={(event) => onChange(event.target.value)}
         />
       )}
+
+      {inactiveHint && (
+        <span id={hintId} className="sr-only">{inactiveHint}</span>
+      )}
+
+      {/*
+        The error bubble stays in the DOM for every flagged field so the
+        aria-describedby above resolves; CSS only reveals it on the field that
+        is focused or hovered, so a dense form does not sprout a pile of red.
+      */}
+      {state === 'invalid' ? (
+        <FieldCallout
+          id={errorId}
+          tone="error"
+          text={fieldErrorText(field)}
+          placement={placement}
+          maxWidthPx={calloutWidth}
+        />
+      ) : state === 'active' ? (
+        <FieldCallout
+          tone="info"
+          text={`${field.label} · ${required ? 'Required' : 'Optional'}`}
+          placement={placement}
+          maxWidthPx={calloutWidth}
+        />
+      ) : null}
     </div>
   )
 }

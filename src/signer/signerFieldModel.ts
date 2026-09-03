@@ -187,7 +187,96 @@ export function nextUnfilledField(
     (field) =>
       isEffectivelyRequired(field, fields, values) && !isRequirementSatisfied(field, fields, values),
   )
-  return outstanding.find((field) => !visited.has(field.id)) ?? outstanding[0] ?? null
+  // Likewise a group the signer has already been shown counts as visited as a
+  // whole: being walked from Basic to Premium to Deluxe is not progress.
+  const groupVisited = (field: TemplateField) =>
+    groupMembers(field, fields).some((member) => visited.has(member.id))
+  return outstanding.find((field) => !groupVisited(field)) ?? outstanding[0] ?? null
+}
+
+/**
+ * Flagged ids widened to whole choice groups. Validation reports a missing
+ * group once, by its first option, but on the page every option in the group
+ * is the thing left undone, so they are all outlined together.
+ */
+export function expandToGroups(ids: ReadonlySet<string>, fields: TemplateField[]): Set<string> {
+  const expanded = new Set(ids)
+  for (const field of fields) {
+    if (!ids.has(field.id)) continue
+    for (const member of groupMembers(field, fields)) expanded.add(member.id)
+  }
+  return expanded
+}
+
+export type ApplicabilityDelta = {
+  /** Fields that were not part of the form before and are now, in reading order. */
+  nowApply: TemplateField[]
+  /** Fields that were part of the form before and no longer are, in reading order. */
+  noLongerApply: TemplateField[]
+}
+
+/**
+ * Which fields ticking or unticking a controlling checkbox brought in or took
+ * out. The signer sees greyed boxes wake up or fade with no other cue, so the
+ * screen announces this difference.
+ */
+export function applicabilityDelta(
+  fields: TemplateField[],
+  before: SignerValues,
+  after: SignerValues,
+): ApplicabilityDelta {
+  const nowApply: TemplateField[] = []
+  const noLongerApply: TemplateField[] = []
+  for (const field of sortSignerFields(fields)) {
+    const was = isFieldApplicable(field, fields, before)
+    const is = isFieldApplicable(field, fields, after)
+    if (!was && is) nowApply.push(field)
+    if (was && !is) noLongerApply.push(field)
+  }
+  return { nowApply, noLongerApply }
+}
+
+/** Human sentence for an applicability change, or null when nothing changed. */
+export function applicabilityNotice(delta: ApplicabilityDelta): string | null {
+  const parts: string[] = []
+  const added = delta.nowApply.length
+  const removed = delta.noLongerApply.length
+  if (added > 0) parts.push(`${added} more ${added === 1 ? 'field' : 'fields'} now ${added === 1 ? 'applies' : 'apply'}.`)
+  if (removed > 0) {
+    parts.push(`${removed} ${removed === 1 ? 'field' : 'fields'} no longer ${removed === 1 ? 'applies' : 'apply'}.`)
+  }
+  return parts.length > 0 ? parts.join(' ') : null
+}
+
+/** What a flagged field is asking for, shown in the bubble beside it. */
+export function fieldErrorText(field: TemplateField): string {
+  switch (field.type) {
+    case 'checkbox':
+      return field.group ? 'Choose one option' : 'Check this box'
+    case 'signature':
+      return 'Sign here'
+    case 'initials':
+      return 'Initial here'
+    default:
+      return 'Required'
+  }
+}
+
+/**
+ * Label for the button that walks the signer through the form. It carries the
+ * count so the signer knows how much is left before they press it.
+ */
+export function walkerLabel(progress: { done: number; total: number }, started: boolean): string {
+  if (progress.total === 0 || progress.done >= progress.total) return 'Finish'
+  if (!started) return `Start · ${progress.total} ${progress.total === 1 ? 'field' : 'fields'}`
+  const left = progress.total - progress.done
+  return `Next field · ${left} left`
+}
+
+/** Space-joined id list for aria-describedby, or undefined when there is none. */
+export function describedBy(...ids: Array<string | false | null | undefined>): string | undefined {
+  const present = ids.filter((id): id is string => typeof id === 'string' && id !== '')
+  return present.length > 0 ? present.join(' ') : undefined
 }
 
 /**

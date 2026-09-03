@@ -24,10 +24,17 @@ import SignerField from '../signer/SignerField'
 import { SignerLoading, SignerUnavailable } from '../signer/SignerStatus'
 import { DocumentSkeleton } from '../components/DashboardSkeleton'
 import FieldBookmarks from '../signer/FieldBookmarks'
+import FieldLegend from '../signer/FieldLegend'
 import { BOOKMARK_RAIL_PX, planBookmarks } from '../signer/fieldTagLayout'
 import { useSignerSession } from '../signer/useSignerSession'
+import type { Notice } from '../signer/notice'
+import { TRANSIENT_NOTICE_MS } from '../signer/notice'
 import {
+  applicabilityDelta,
+  applicabilityNotice,
   applySignerValue,
+  controllerOf,
+  expandToGroups,
   incompleteRequiredFields,
   isEffectivelyRequired,
   isFieldApplicable,
@@ -36,13 +43,12 @@ import {
   signerProgress,
   sortSignerFields,
   todayAsInputValue,
+  walkerLabel,
 } from '../signer/signerFieldModel'
 import '../styles/signer.css'
 
 export const consentVersion = '2026-08-16-v1'
 const supportEmail = (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined) ?? ''
-
-type Notice = { tone: 'info' | 'error' | 'success'; text: string } | null
 
 type SignerScreenProps = {
   templateId: string
@@ -94,7 +100,7 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
   const invalidFieldIds = useMemo(() => {
     if (flaggedFieldIds.size === 0) return flaggedFieldIds
     const missing = new Set(incompleteRequiredFields(fields, signerValues).map((field) => field.id))
-    return new Set([...flaggedFieldIds].filter((id) => missing.has(id)))
+    return expandToGroups(new Set([...flaggedFieldIds].filter((id) => missing.has(id))), fields)
   }, [flaggedFieldIds, fields, signerValues])
 
   // One bookmark per row of fields, planned across the whole page. A field
@@ -143,6 +149,24 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
       return next
     })
   }, [fields])
+
+  // Ticking a controlling checkbox makes grey boxes wake up somewhere on the
+  // page, possibly off screen. Say so. This is a diff of committed state rather
+  // than logic inside the updater, which StrictMode runs twice.
+  const previousValuesRef = useRef(signerValues)
+  useEffect(() => {
+    const text = applicabilityNotice(applicabilityDelta(fields, previousValuesRef.current, signerValues))
+    previousValuesRef.current = signerValues
+    if (text) setNotice({ tone: 'info', text, transient: true })
+  }, [fields, signerValues])
+
+  useEffect(() => {
+    if (!notice?.transient) return
+    const timer = window.setTimeout(() => {
+      setNotice((current) => (current?.transient ? null : current))
+    }, TRANSIENT_NOTICE_MS)
+    return () => window.clearTimeout(timer)
+  }, [notice])
 
   /**
    * Bring a field up to a comfortable size before focusing it.
@@ -340,9 +364,8 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
     )
   }
 
-  const chipLabel = progress.total > 0 && progress.done >= progress.total
-    ? 'Finish'
-    : started ? 'Next' : 'Start'
+  const chipLabel = walkerLabel(progress, started)
+  const chipIsFinish = chipLabel === 'Finish'
 
   return (
     <div className="app-shell signer-shell">
@@ -350,6 +373,8 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
         open={!consentAccepted && !consentDismissed}
         consentVersion={consentVersion}
         supportEmail={supportEmail}
+        email={signerEmail}
+        onEmailChange={setSignerEmail}
         onAccept={acceptConsent}
         onReviewFirst={() => setConsentDismissed(true)}
       />
@@ -364,47 +389,31 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
         }}
       />
 
-      <header className="topbar">
+      <header className="topbar signer-topbar">
         <div>
-          <p className="eyebrow">Secure document request</p>
-          <h1>Review and sign</h1>
+          <p className="eyebrow">Review and sign</p>
+          <h1>{template.name}</h1>
         </div>
-        <span className="request-expiry">Public form</span>
+        <span className="signer-meta">
+          {pageCount > 0
+            ? `${pageCount} ${pageCount === 1 ? 'page' : 'pages'} · ${progress.total} required ${progress.total === 1 ? 'field' : 'fields'}`
+            : 'Loading document'}
+        </span>
       </header>
 
       <section className="signer-panel">
-        <h2>{template.name}</h2>
-        <p className="signer-intro">
-          Select Start to move through each required field in order, then choose Finish.
-        </p>
-
-        <label className="signer-email-field">
-          Email address (optional)
-          <input
-            type="email"
-            value={signerEmail}
-            disabled={locked}
-            onChange={(event) => setSignerEmail(event.target.value)}
-            placeholder="you@example.com"
-          />
-        </label>
-
         <FinishBar
           done={progress.done}
           total={progress.total}
           started={started}
           consentAccepted={consentAccepted}
+          notice={notice}
           isSubmitting={isSubmitting}
+          onReviewNotice={() => setConsentDismissed(false)}
           onNext={goToNext}
           onFinish={() => void finish()}
           finishRef={(element) => { finishRef.current = element }}
         />
-
-        {notice && (
-          <p className="submit-message" data-tone={notice.tone} role="status">
-            {notice.text}
-          </p>
-        )}
 
         {consentAccepted && (
           <p className="consent-receipt">
@@ -445,6 +454,8 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
             <button type="button" className="zoom-reset" onClick={resetZoom}>100%</button>
           </div>
         </div>
+
+        <FieldLegend />
 
         <div className="pdf-stage signer-stage" ref={stageRef}>
           {pdfError && <div className="pdf-error">{pdfError}</div>}
@@ -504,6 +515,8 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
                         isInvalid={invalidFieldIds.has(field.id)}
                         required={isEffectivelyRequired(field, fields, signerValues)}
                         applicable={isFieldApplicable(field, fields, signerValues)}
+                        controllerLabel={controllerOf(field, fields)?.label}
+                        pageWidthPx={BASE_PAGE_WIDTH * zoom}
                         locked={locked}
                         hasSignature={Boolean(adopted)}
                         registerRef={(element) => { fieldRefs.current[field.id] = element }}
@@ -525,7 +538,12 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
         </div>
       </section>
 
-      <NextFieldChip label={chipLabel} hidden={locked} onClick={chipLabel === 'Finish' ? () => void finish() : goToNext} />
+      <NextFieldChip
+        label={chipLabel}
+        isFinish={chipIsFinish}
+        hidden={locked}
+        onClick={chipIsFinish ? () => void finish() : goToNext}
+      />
     </div>
   )
 }

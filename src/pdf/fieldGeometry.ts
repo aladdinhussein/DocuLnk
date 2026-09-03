@@ -65,6 +65,18 @@ export const MIN_COMFORTABLE_FIELD_PX = 28
 /** Rendered height below which a field can no longer carry its own tag legibly. */
 export const MIN_TAGGABLE_FIELD_PX = 16
 
+/**
+ * Rendered distance from the page top below which a callout drawn above a
+ * field would be clipped by the scrolling stage (18px of stage padding plus
+ * the bubble and its gap), so it is drawn below the field instead.
+ */
+export const CALLOUT_FLIP_PX = 32
+
+/** Which side of a field its label or error bubble should sit on. */
+export function calloutPlacement(fieldTopPx: number): 'above' | 'below' {
+  return fieldTopPx < CALLOUT_FLIP_PX ? 'below' : 'above'
+}
+
 /** The zoom at which a field of this height renders at least `minPx` tall. */
 export function zoomForFieldHeight(fieldHeight: number, minPx: number): number {
   if (fieldHeight <= 0) return 1

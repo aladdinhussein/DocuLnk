@@ -4,6 +4,8 @@ type ConsentGateProps = {
   open: boolean
   consentVersion: string
   supportEmail: string
+  email: string
+  onEmailChange: (value: string) => void
   onAccept: () => void
   onReviewFirst: () => void
 }
@@ -21,6 +23,8 @@ export default function ConsentGate({
   open,
   consentVersion,
   supportEmail,
+  email,
+  onEmailChange,
   onAccept,
   onReviewFirst,
 }: ConsentGateProps) {
@@ -54,6 +58,25 @@ export default function ConsentGate({
           is associated with this request, its timestamp, and the email invitation used to
           access it. This notice is version {consentVersion}.
         </p>
+
+        {/*
+          The email lives here, at the identity-and-consent moment, rather than
+          at the top of the form where it read as a login and explained nothing.
+        */}
+        <label className="signer-email-field">
+          Your email (optional)
+          <input
+            type="email"
+            value={email}
+            autoComplete="email"
+            placeholder="you@example.com"
+            aria-describedby="consent-email-hint"
+            onChange={(event) => onEmailChange(event.target.value)}
+          />
+          <span id="consent-email-hint" className="signer-email-hint">
+            Shared with the sender so they know who signed. We do not send you a copy.
+          </span>
+        </label>
 
         <label className="consent-row">
           <input

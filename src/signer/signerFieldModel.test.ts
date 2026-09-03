@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { TemplateField } from '../types'
 import {
+  applicabilityDelta,
+  applicabilityNotice,
   applySignerValue,
+  describedBy,
+  expandToGroups,
+  fieldErrorText,
+  walkerLabel,
   incompleteRequiredFields,
   isEffectivelyRequired,
   isFieldApplicable,
@@ -289,5 +295,126 @@ describe('fields governed by a checkbox', () => {
     const values = applySignerValue(fields, { 'has-spouse': 'true', 'spouse-name': 'Alex' }, 'name', 'Jane')
 
     expect(values).toEqual({ 'has-spouse': 'true', 'spouse-name': 'Alex', name: 'Jane' })
+  })
+})
+
+describe('applicabilityDelta', () => {
+  const controller = field({ id: 'has-spouse', type: 'checkbox', label: 'Married', y: 0 })
+  const dependent1 = field({ id: 'spouse-name', label: 'Spouse name', requiredWhenFieldId: 'has-spouse', y: 10 })
+  const dependent2 = field({ id: 'spouse-dob', label: 'Spouse DOB', requiredWhenFieldId: 'has-spouse', y: 20 })
+  const plain = field({ id: 'name', label: 'Name', y: 30 })
+  const fields = [plain, dependent2, dependent1, controller]
+
+  it('reports dependents that ticking the controller brought in, in reading order', () => {
+    const delta = applicabilityDelta(fields, {}, { 'has-spouse': 'true' })
+
+    expect(delta.nowApply.map((entry) => entry.id)).toEqual(['spouse-name', 'spouse-dob'])
+    expect(delta.noLongerApply).toEqual([])
+  })
+
+  it('reports dependents that unticking the controller took out', () => {
+    const delta = applicabilityDelta(fields, { 'has-spouse': 'true' }, { 'has-spouse': 'false' })
+
+    expect(delta.nowApply).toEqual([])
+    expect(delta.noLongerApply.map((entry) => entry.id)).toEqual(['spouse-name', 'spouse-dob'])
+  })
+
+  it('is empty for a change to an unrelated field', () => {
+    const delta = applicabilityDelta(fields, {}, { name: 'Jane' })
+
+    expect(delta).toEqual({ nowApply: [], noLongerApply: [] })
+  })
+
+  it('is empty when nothing changed', () => {
+    const values = { 'has-spouse': 'true' }
+
+    expect(applicabilityDelta(fields, values, values)).toEqual({ nowApply: [], noLongerApply: [] })
+  })
+})
+
+describe('applicabilityNotice', () => {
+  it('returns null when nothing changed', () => {
+    expect(applicabilityNotice({ nowApply: [], noLongerApply: [] })).toBeNull()
+  })
+
+  it('uses the singular for one field', () => {
+    expect(applicabilityNotice({ nowApply: [field()], noLongerApply: [] })).toBe('1 more field now applies.')
+    expect(applicabilityNotice({ nowApply: [], noLongerApply: [field()] })).toBe('1 field no longer applies.')
+  })
+
+  it('uses the plural for several', () => {
+    expect(applicabilityNotice({ nowApply: [field(), field()], noLongerApply: [] })).toBe('2 more fields now apply.')
+  })
+
+  it('joins both directions', () => {
+    expect(applicabilityNotice({ nowApply: [field()], noLongerApply: [field(), field()] })).toBe(
+      '1 more field now applies. 2 fields no longer apply.',
+    )
+  })
+})
+
+describe('fieldErrorText', () => {
+  it('asks for one option from a grouped checkbox', () => {
+    expect(fieldErrorText(field({ type: 'checkbox', group: 'plan' }))).toBe('Choose one option')
+  })
+
+  it('asks to tick a lone checkbox', () => {
+    expect(fieldErrorText(field({ type: 'checkbox' }))).toBe('Check this box')
+  })
+
+  it('names the action for image fields', () => {
+    expect(fieldErrorText(field({ type: 'signature' }))).toBe('Sign here')
+    expect(fieldErrorText(field({ type: 'initials' }))).toBe('Initial here')
+  })
+
+  it('says Required for text and date', () => {
+    expect(fieldErrorText(field({ type: 'text' }))).toBe('Required')
+    expect(fieldErrorText(field({ type: 'date' }))).toBe('Required')
+  })
+})
+
+describe('walkerLabel', () => {
+  it('offers Start with the field count before the signer begins', () => {
+    expect(walkerLabel({ done: 0, total: 3 }, false)).toBe('Start · 3 fields')
+    expect(walkerLabel({ done: 0, total: 1 }, false)).toBe('Start · 1 field')
+  })
+
+  it('offers Next field with what is left once started', () => {
+    expect(walkerLabel({ done: 1, total: 3 }, true)).toBe('Next field · 2 left')
+  })
+
+  it('offers Finish once everything required is done', () => {
+    expect(walkerLabel({ done: 3, total: 3 }, true)).toBe('Finish')
+    expect(walkerLabel({ done: 3, total: 3 }, false)).toBe('Finish')
+  })
+
+  it('offers Finish when the form has nothing required', () => {
+    expect(walkerLabel({ done: 0, total: 0 }, false)).toBe('Finish')
+  })
+})
+
+describe('describedBy', () => {
+  it('joins the ids that are present', () => {
+    expect(describedBy('a-error', false, undefined, 'a-hint')).toBe('a-error a-hint')
+  })
+
+  it('is undefined when nothing is present', () => {
+    expect(describedBy(false, undefined, null, '')).toBeUndefined()
+  })
+})
+
+describe('expandToGroups', () => {
+  const fields = [
+    field({ id: 'basic', type: 'checkbox', group: 'plan' }),
+    field({ id: 'premium', type: 'checkbox', group: 'plan' }),
+    field({ id: 'name' }),
+  ]
+
+  it('widens a flagged option to every option in its group', () => {
+    expect([...expandToGroups(new Set(['basic']), fields)].sort()).toEqual(['basic', 'premium'])
+  })
+
+  it('leaves ungrouped fields as they are', () => {
+    expect([...expandToGroups(new Set(['name']), fields)]).toEqual(['name'])
   })
 })

@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { BASE_PAGE_WIDTH, clientPointToFieldUnits, fieldBoxStyle, pageScaleFor } from './fieldGeometry'
+import {
+  BASE_PAGE_WIDTH,
+  CALLOUT_FLIP_PX,
+  calloutPlacement,
+  clientPointToFieldUnits,
+  fieldBoxStyle,
+  pageScaleFor,
+} from './fieldGeometry'
+
+describe('calloutPlacement', () => {
+  it('puts the bubble below a field hugging the page top, where above would be clipped', () => {
+    expect(calloutPlacement(10)).toBe('below')
+    expect(calloutPlacement(CALLOUT_FLIP_PX - 1)).toBe('below')
+  })
+
+  it('puts the bubble above a field with room over it', () => {
+    expect(calloutPlacement(CALLOUT_FLIP_PX)).toBe('above')
+    expect(calloutPlacement(400)).toBe('above')
+  })
+})
 
 describe('pageScaleFor', () => {
   it('maps a US Letter page to its own scale', () => {
