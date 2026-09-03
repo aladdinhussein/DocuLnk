@@ -49,8 +49,13 @@ const aadJwks = aadTenantId
 
 function decodePdf(value: string): Buffer {
   const bytes = Buffer.from(value, 'base64')
-  if (bytes.length === 0 || bytes.length > maxPdfBytes || bytes.subarray(0, 5).toString() !== '%PDF-') {
-    throw new Error('PDF must be valid and smaller than 25 MB')
+  if (bytes.length === 0) throw new Error('The uploaded PDF is empty')
+  if (bytes.length > maxPdfBytes) throw new Error('The PDF must be smaller than 25 MB')
+  // The spec allows the header anywhere in the first 1024 bytes, and files
+  // exported by some tools carry a preamble before it. Checking byte 0 alone
+  // rejected those as "not a PDF".
+  if (!bytes.subarray(0, 1024).includes('%PDF-')) {
+    throw new Error('The uploaded file is not a PDF')
   }
   return bytes
 }
@@ -185,7 +190,7 @@ const templateUpdateInput = z.object({
 
 app.http('templates-update', {
   methods: ['PUT'], authLevel: 'anonymous', route: 'templates/{templateId}',
-  handler: async (request) => {
+  handler: async (request, context) => {
     try {
       const denied = await requireAdmin(request)
       if (denied) return denied
@@ -212,6 +217,9 @@ app.http('templates-update', {
       await withStorage(() => updateTemplateMetadata(updated))
       return json(updated)
     } catch (error) {
+      // Logged so a failed replacement is visible in Application Insights, not
+      // only as a rejected promise in the admin's browser console.
+      context.error('template update failed', request.params.templateId, error)
       return json({ error: error instanceof Error ? error.message : 'Invalid update' }, 400)
     }
   },

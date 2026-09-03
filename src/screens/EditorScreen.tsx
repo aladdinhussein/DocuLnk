@@ -77,6 +77,7 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
   // Whether the PDF was swapped out while editing an already-published template,
   // so publishing needs to re-upload it and refresh the stored hash.
   const [pdfReplaced, setPdfReplaced] = useState(false)
+  const [isPublishing, setIsPublishing] = useState(false)
 
   useEffect(() => {
     if (!file) {
@@ -464,47 +465,70 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
   )
 
   const publishTemplate = async () => {
-    if (!file || !fileHash) {
-      setPublishMessage('Upload a PDF before publishing the template.')
-      setIsPublished(false)
+    if (!file || isPublishing) {
+      if (!file) {
+        setPublishMessage('Upload a PDF before publishing the template.')
+        setIsPublished(false)
+      }
       return
     }
 
+    // The file is the source of truth for the hash. The stored hash is computed
+    // in an effect after a replacement is chosen, so publishing straight after
+    // picking a new PDF could still see the previous file's hash and refuse.
     const currentHash = await computeFileHash(file)
-    if (currentHash !== fileHash) {
-      setPublishMessage('The PDF changed after setup. Reload it before publishing.')
-      setIsPublished(false)
-      return
-    }
+    if (currentHash !== fileHash) setFileHash(currentHash)
 
     const publishedMetadata = {
       ...metadata,
+      pdfHash: currentHash,
       status: 'published',
       publishedAt: new Date().toISOString(),
       pdfDataUrl: await readFileAsDataUrl(file),
     }
 
-    if (apiEnabled) {
-      if (editingTemplateId) {
-        await updateRemoteTemplate(
-          editingTemplateId,
-          metadata.name,
-          metadata.fields,
-          pdfReplaced ? { file, pdfHash: metadata.pdfHash } : undefined,
-        )
+    setIsPublishing(true)
+    setPublishMessage('')
+    try {
+      if (apiEnabled) {
+        if (editingTemplateId) {
+          await updateRemoteTemplate(
+            editingTemplateId,
+            metadata.name,
+            metadata.fields,
+            pdfReplaced ? { file, pdfHash: currentHash } : undefined,
+          )
+        } else {
+          await publishRemoteTemplate(file, {
+            name: metadata.name,
+            pdfHash: currentHash,
+            fields: metadata.fields,
+          })
+        }
       } else {
-        await publishRemoteTemplate(file, {
-          name: metadata.name,
-          pdfHash: metadata.pdfHash,
-          fields: metadata.fields,
-        })
+        const templates = readLocalTemplates().filter((template) => template.templateId !== publishedMetadata.templateId)
+        writeLocalTemplates([...templates, publishedMetadata])
       }
-    } else {
-      const templates = readLocalTemplates().filter((template) => template.templateId !== publishedMetadata.templateId)
-      writeLocalTemplates([...templates, publishedMetadata])
+    } catch (error) {
+      // This used to be uncaught, so a rejected upload left the screen exactly
+      // as it was: no message, the Draft chip, and the old PDF still live.
+      setPublishMessage(
+        `Publishing failed: ${error instanceof Error ? error.message : 'the server rejected the request.'}`,
+      )
+      setIsPublished(false)
+      return
+    } finally {
+      setIsPublishing(false)
     }
+
     onPublished(publishedMetadata)
-    setPublishMessage('Template published and saved in this browser.')
+    setPublishMessage(
+      apiEnabled
+        ? pdfReplaced
+          ? 'Template published with the replacement PDF.'
+          : 'Template published.'
+        : 'Template published and saved in this browser.',
+    )
     setIsPublished(true)
     setPdfReplaced(false)
   }
@@ -527,10 +551,10 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
             <button
               type="button"
               className="primary-button"
-              disabled={!file}
-              onClick={publishTemplate}
+              disabled={!file || isPublishing}
+              onClick={() => void publishTemplate()}
             >
-              {isPublished ? 'Publish changes' : 'Publish template'}
+              {isPublishing ? 'Publishing...' : isPublished ? 'Publish changes' : 'Publish template'}
             </button>
           </div>
         </div>
