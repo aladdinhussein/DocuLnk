@@ -163,6 +163,20 @@
   animation: field-nudge var(--duration-slow) var(--ease-out);
 }
 
+/* Governed by a checkbox that is unticked: the field is not part of the form
+   right now, so it reads as a faint outline rather than something to fill. */
+.signer-field[data-state='inactive'] {
+  border-style: dashed;
+  border-color: var(--color-border-strong);
+  background: transparent;
+  opacity: 0.55;
+}
+
+.signer-field[data-state='inactive'] input,
+.signer-field[data-state='inactive'] .sign-here-button {
+  cursor: not-allowed;
+}
+
 @keyframes field-nudge {
   0%, 100% { transform: translateX(0); }
   25% { transform: translateX(-3px); }

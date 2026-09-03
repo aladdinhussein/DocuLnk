@@ -4,6 +4,7 @@ import {
   applySignerValue,
   incompleteRequiredFields,
   isEffectivelyRequired,
+  isFieldApplicable,
   isFieldFilled,
   nextUnfilledField,
   requiredFieldsComplete,
@@ -229,6 +230,64 @@ describe('checkbox groups', () => {
   })
 
   it('skips the remaining options once a choice is made', () => {
-    expect(nextUnfilledField(fields, { basic: 'true' })?.id).toBe('newsletter')
+    // 'newsletter' is optional, so nothing required is left.
+    expect(nextUnfilledField(fields, {})?.id).toBe('basic')
+    expect(nextUnfilledField(fields, { basic: 'true' })).toBeNull()
+  })
+})
+
+describe('fields governed by a checkbox', () => {
+  const fields = [
+    field({ id: 'has-spouse', type: 'checkbox', required: false, y: 10 }),
+    field({ id: 'spouse-name', requiredWhenFieldId: 'has-spouse', y: 20 }),
+    field({ id: 'name', y: 30 }),
+  ]
+
+  it('are not applicable while the checkbox is unticked', () => {
+    expect(isFieldApplicable(fields[1], fields, {})).toBe(false)
+    expect(isFieldApplicable(fields[1], fields, { 'has-spouse': 'false' })).toBe(false)
+    expect(isFieldApplicable(fields[1], fields, { 'has-spouse': 'true' })).toBe(true)
+  })
+
+  it('are always applicable when they have no controller', () => {
+    expect(isFieldApplicable(fields[2], fields, {})).toBe(true)
+    expect(isFieldApplicable(fields[0], fields, {})).toBe(true)
+  })
+
+  it('are skipped by Next while the checkbox is unticked', () => {
+    expect(nextUnfilledField(fields, {})?.id).toBe('name')
+    expect(nextUnfilledField(fields, { name: 'Jane' })).toBeNull()
+  })
+
+  it('are visited by Next once the checkbox is ticked', () => {
+    expect(nextUnfilledField(fields, { 'has-spouse': 'true' })?.id).toBe('spouse-name')
+  })
+
+  it('lose their value when the checkbox is unticked', () => {
+    const values = applySignerValue(
+      fields,
+      { 'has-spouse': 'true', 'spouse-name': 'Alex', name: 'Jane' },
+      'has-spouse',
+      'false',
+    )
+
+    expect(values).toEqual({ 'has-spouse': 'false', name: 'Jane' })
+  })
+
+  it('lose their value when another option in the controller group is chosen', () => {
+    const grouped = [
+      field({ id: 'married', type: 'checkbox', group: 'status', y: 10 }),
+      field({ id: 'single', type: 'checkbox', group: 'status', y: 20 }),
+      field({ id: 'spouse-name', requiredWhenFieldId: 'married', y: 30 }),
+    ]
+    const values = applySignerValue(grouped, { married: 'true', 'spouse-name': 'Alex' }, 'single', 'true')
+
+    expect(values).toEqual({ married: 'false', single: 'true' })
+  })
+
+  it('keep their value while the checkbox stays ticked', () => {
+    const values = applySignerValue(fields, { 'has-spouse': 'true', 'spouse-name': 'Alex' }, 'name', 'Jane')
+
+    expect(values).toEqual({ 'has-spouse': 'true', 'spouse-name': 'Alex', name: 'Jane' })
   })
 })

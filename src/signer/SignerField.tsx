@@ -2,7 +2,7 @@ import type { TemplateField } from '../types'
 import { FIELD_VERB, isFieldFilled } from './signerFieldModel'
 import { fieldBoxStyle } from '../pdf/fieldGeometry'
 
-export type FieldState = 'pending' | 'active' | 'filled' | 'invalid'
+export type FieldState = 'pending' | 'active' | 'filled' | 'invalid' | 'inactive'
 
 type SignerFieldProps = {
   field: TemplateField
@@ -12,6 +12,11 @@ type SignerFieldProps = {
   isInvalid: boolean
   /** Whether the field is required right now, conditions already evaluated. */
   required: boolean
+  /**
+   * Whether the field is part of the form right now. A field whose controlling
+   * checkbox is unticked is shown greyed and cannot be filled.
+   */
+  applicable: boolean
   locked: boolean
   hasSignature: boolean
   registerRef: (element: HTMLInputElement | HTMLButtonElement | null) => void
@@ -20,7 +25,13 @@ type SignerFieldProps = {
   onRequestSignature: () => void
 }
 
-function fieldState(filled: boolean, isActive: boolean, isInvalid: boolean): FieldState {
+function fieldState(
+  filled: boolean,
+  isActive: boolean,
+  isInvalid: boolean,
+  applicable: boolean,
+): FieldState {
+  if (!applicable) return 'inactive'
   if (isInvalid) return 'invalid'
   if (isActive) return 'active'
   return filled ? 'filled' : 'pending'
@@ -33,6 +44,7 @@ export default function SignerField({
   isActive,
   isInvalid,
   required,
+  applicable,
   locked,
   hasSignature,
   registerRef,
@@ -41,7 +53,8 @@ export default function SignerField({
   onRequestSignature,
 }: SignerFieldProps) {
   const filled = isFieldFilled(field, value)
-  const state = fieldState(filled, isActive, isInvalid)
+  const state = fieldState(filled, isActive, isInvalid, applicable)
+  const disabled = locked || !applicable
   const verb = FIELD_VERB[field.type]
   const isImageField = field.type === 'signature' || field.type === 'initials'
   const errorId = `${field.id}-error`
@@ -58,7 +71,7 @@ export default function SignerField({
           type="button"
           className="sign-here-button"
           ref={registerRef}
-          disabled={locked}
+          disabled={disabled}
           aria-label={`${verb} ${field.label}`}
           aria-invalid={isInvalid || undefined}
           aria-describedby={isInvalid ? errorId : undefined}
@@ -75,7 +88,7 @@ export default function SignerField({
         <input
           type="checkbox"
           ref={registerRef}
-          disabled={locked}
+          disabled={disabled}
           checked={value === 'true'}
           name={field.group || undefined}
           aria-label={field.group ? `${field.label}, ${field.group}` : field.label}
@@ -88,7 +101,7 @@ export default function SignerField({
         <input
           type={field.type === 'date' ? 'date' : 'text'}
           ref={registerRef}
-          disabled={locked}
+          disabled={disabled}
           required={required}
           value={value ?? ''}
           aria-label={field.label}

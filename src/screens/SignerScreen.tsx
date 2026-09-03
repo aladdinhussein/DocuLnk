@@ -30,6 +30,7 @@ import {
   applySignerValue,
   incompleteRequiredFields,
   isEffectivelyRequired,
+  isFieldApplicable,
   isFieldFilled,
   nextUnfilledField,
   signerProgress,
@@ -96,9 +97,16 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
     return new Set([...flaggedFieldIds].filter((id) => missing.has(id)))
   }, [flaggedFieldIds, fields, signerValues])
 
-  // One bookmark per row of fields, planned across the whole page.
+  // One bookmark per row of fields, planned across the whole page. A field
+  // whose controlling checkbox is unticked is not part of the form right now,
+  // so it gets no bookmark and cannot be jumped to.
   const bookmarks = useMemo(
-    () => planBookmarks(fields, signerValues, activeFieldId, invalidFieldIds),
+    () => planBookmarks(
+      fields.filter((field) => isFieldApplicable(field, fields, signerValues)),
+      signerValues,
+      activeFieldId,
+      invalidFieldIds,
+    ),
     [fields, signerValues, activeFieldId, invalidFieldIds],
   )
 
@@ -367,7 +375,7 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
       <section className="signer-panel">
         <h2>{template.name}</h2>
         <p className="signer-intro">
-          Select Start to move through each field in order, then choose Finish.
+          Select Start to move through each required field in order, then choose Finish.
         </p>
 
         <label className="signer-email-field">
@@ -495,6 +503,7 @@ export default function SignerScreen({ templateId }: SignerScreenProps) {
                         isActive={activeFieldId === field.id}
                         isInvalid={invalidFieldIds.has(field.id)}
                         required={isEffectivelyRequired(field, fields, signerValues)}
+                        applicable={isFieldApplicable(field, fields, signerValues)}
                         locked={locked}
                         hasSignature={Boolean(adopted)}
                         registerRef={(element) => { fieldRefs.current[field.id] = element }}

@@ -110,6 +110,17 @@ describe('nextUnfilledField', () => {
   it('returns null when everything is filled', () => {
     expect(nextUnfilledField(fields, { a: 'x', b: 'y', c: 'z' })).toBeNull()
   })
+
+  it('steps over optional fields', () => {
+    const withOptional = [
+      field({ id: 'a', y: 10 }),
+      field({ id: 'note', y: 20, required: false }),
+      field({ id: 'c', y: 30 }),
+    ]
+
+    expect(nextUnfilledField(withOptional, { a: 'x' })?.id).toBe('c')
+    expect(nextUnfilledField(withOptional, { a: 'x', c: 'z' })).toBeNull()
+  })
 })
 
 describe('FIELD_VERB', () => {

@@ -49,26 +49,43 @@ export function isRequirementSatisfied(
 }
 
 /**
- * Whether the field is required right now, given what the signer has filled.
+ * The checkbox that governs this field, if it has one.
  *
  * A condition pointing at something that is not a checkbox on this template
  * (removed, retyped, or the field itself) is ignored rather than honoured, so a
  * broken reference can never silently make a required field optional.
  */
+export function controllerOf(field: TemplateField, fields: TemplateField[]): TemplateField | null {
+  if (!field.requiredWhenFieldId) return null
+  return (
+    fields.find(
+      (entry) =>
+        entry.id === field.requiredWhenFieldId && entry.type === 'checkbox' && entry.id !== field.id,
+    ) ?? null
+  )
+}
+
+/**
+ * Whether the field exists for the signer right now. A field governed by a
+ * checkbox is only part of the form while that checkbox is ticked; otherwise
+ * it is not fillable, not navigable, and not printed.
+ */
+export function isFieldApplicable(
+  field: TemplateField,
+  fields: TemplateField[],
+  values: SignerValues,
+): boolean {
+  const controller = controllerOf(field, fields)
+  return controller === null || values[controller.id] === 'true'
+}
+
+/** Whether the field is required right now, given what the signer has filled. */
 export function isEffectivelyRequired(
   field: TemplateField,
   fields: TemplateField[],
   values: SignerValues,
 ): boolean {
-  if (!field.required) return false
-  if (!field.requiredWhenFieldId) return true
-
-  const controller = fields.find(
-    (entry) =>
-      entry.id === field.requiredWhenFieldId && entry.type === 'checkbox' && entry.id !== field.id,
-  )
-  if (!controller) return true
-  return values[controller.id] === 'true'
+  return field.required && isFieldApplicable(field, fields, values)
 }
 
 /**
@@ -121,6 +138,10 @@ export function signerProgress(
 /**
  * The signer's values after setting one field. Ticking a grouped checkbox
  * clears the rest of its group, so the group behaves as a single choice.
+ *
+ * Any field whose controlling checkbox ends up unticked is wiped as well: once
+ * the signer says the section does not apply, whatever they typed into it
+ * before must not linger, or it would be flattened into the signed PDF.
  */
 export function applySignerValue(
   fields: TemplateField[],
@@ -130,16 +151,25 @@ export function applySignerValue(
 ): SignerValues {
   const next: SignerValues = { ...values, [fieldId]: value }
   const field = fields.find((entry) => entry.id === fieldId)
-  if (!field || field.type !== 'checkbox' || !field.group || value !== 'true') return next
+  if (!field || field.type !== 'checkbox') return next
 
-  for (const member of groupMembers(field, fields)) {
-    if (member.id !== fieldId && next[member.id] === 'true') next[member.id] = 'false'
+  if (field.group && value === 'true') {
+    for (const member of groupMembers(field, fields)) {
+      if (member.id !== fieldId && next[member.id] === 'true') next[member.id] = 'false'
+    }
+  }
+
+  for (const dependent of fields) {
+    if (dependent.id in next && !isFieldApplicable(dependent, fields, next)) delete next[dependent.id]
   }
   return next
 }
 
 /**
- * The next field needing attention, in reading order.
+ * The next required field still to do, in reading order.
+ *
+ * Only what is required right now counts: optional fields and fields whose
+ * controlling checkbox is unticked are stepped over as if they were not there.
  *
  * `visited` holds the fields navigation has already taken the signer to, so
  * repeated Next presses advance rather than sticking. Without it, a field the
@@ -151,11 +181,13 @@ export function nextUnfilledField(
   values: SignerValues,
   visited: ReadonlySet<string> = new Set(),
 ): TemplateField | null {
-  const ordered = sortSignerFields(fields)
   // A grouped checkbox is done once any option in its group is chosen; Next
   // should not march the signer through the options they decided against.
-  const unfilled = ordered.filter((field) => !isRequirementSatisfied(field, fields, values))
-  return unfilled.find((field) => !visited.has(field.id)) ?? unfilled[0] ?? null
+  const outstanding = sortSignerFields(fields).filter(
+    (field) =>
+      isEffectivelyRequired(field, fields, values) && !isRequirementSatisfied(field, fields, values),
+  )
+  return outstanding.find((field) => !visited.has(field.id)) ?? outstanding[0] ?? null
 }
 
 /**
