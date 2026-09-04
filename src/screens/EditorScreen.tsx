@@ -214,11 +214,6 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
     setIsPublished(false)
     setRequestLink('')
     setLinkCopied(false)
-    setTemplateFields([])
-    setFieldHistory([])
-    setFieldFuture([])
-    setSelectedFieldId(null)
-    setFieldForm(defaultFieldForm)
   }
 
   /**
