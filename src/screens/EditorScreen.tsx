@@ -54,6 +54,7 @@ type EditorScreenProps = {
 export default function EditorScreen({ seed, onClose, onPublished }: EditorScreenProps) {
   const editing = seed.mode === 'edit' ? seed : null
   const [file, setFile] = useState<File | null>(editing?.file ?? null)
+  const [formName, setFormName] = useState(editing?.template.name ?? '')
   const [fileHash, setFileHash] = useState(editing?.template.pdfHash ?? '')
   const [hashMatchesDocument, setHashMatchesDocument] = useState(false)
   const [pdfError, setPdfError] = useState('')
@@ -98,7 +99,7 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
 
   const metadata = {
     templateId: currentTemplateId,
-    name: file?.name ?? 'template.pdf',
+    name: formName.trim(),
     pdfHash: fileHash,
     hashAlgorithm: 'SHA-256',
     pageCount: pdfPageCount,
@@ -467,6 +468,11 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
       }
       return
     }
+    if (!formName.trim()) {
+      setPublishMessage('Enter a form name before publishing the template.')
+      setIsPublished(false)
+      return
+    }
 
     // The file is the source of truth for the hash. The stored hash is computed
     // in an effect after a replacement is chosen, so publishing straight after
@@ -554,7 +560,7 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
           </div>
         </div>
         <div className="app-header-identity">
-          <h1>{file?.name ?? 'New template'}</h1>
+          <h1>{formName || 'New template'}</h1>
           <p className="app-header-meta">
             <span>{templateFields.length} {templateFields.length === 1 ? 'field' : 'fields'}</span>
             {pdfPageCount > 0 && (
@@ -582,6 +588,16 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
       <main className="workspace">
         <aside className="panel">
           <h2>1. Upload PDF</h2>
+          <label>
+            Form name
+            <input
+              value={formName}
+              onChange={(event) => setFormName(event.target.value)}
+              placeholder="Example: Volunteer application"
+              maxLength={200}
+            />
+            <span className="field-selection-help">This is the name signers will see.</span>
+          </label>
           <label className="upload-box">
             <input type="file" accept="application/pdf" onChange={handleFileChange} />
             <span>{file ? 'Replace PDF' : 'Choose template PDF'}</span>
