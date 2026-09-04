@@ -29,6 +29,7 @@ export async function initializeStorage(): Promise<void> {
 export async function saveTemplate(template: TemplateRecord, pdfBytes: Uint8Array): Promise<void> {
   const blobs = await container(templateContainerName)
   await blobs.getBlockBlobClient(template.pdfBlobName).uploadData(pdfBytes, {
+    overwrite: true,
     blobHTTPHeaders: { blobContentType: 'application/pdf' },
   })
   await table.upsertEntity({
