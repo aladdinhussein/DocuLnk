@@ -122,13 +122,15 @@ export default function SignerField({
         />
       ) : (
         <input
-          type={field.type === 'date' ? 'date' : 'text'}
+          type={field.type === 'date' ? 'date' : field.type === 'phone' ? 'tel' : 'text'}
+          inputMode={field.type === 'phone' ? 'tel' : undefined}
+          autoComplete={field.type === 'phone' ? 'tel' : undefined}
           ref={registerRef}
           disabled={disabled}
           required={required}
           value={value ?? ''}
           // A date input ignores placeholder, so its name rides on the callout.
-          placeholder={field.type === 'text' ? field.label : undefined}
+          placeholder={field.type === 'text' || field.type === 'phone' ? field.label : undefined}
           title={title}
           aria-label={field.label}
           aria-required={required || undefined}

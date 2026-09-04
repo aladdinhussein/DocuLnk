@@ -48,7 +48,7 @@ export async function sendSubmissionToAdmin(input: {
       plainText: `${input.templateName} received a signed submission. Submission ID: ${input.submissionId}${input.signerEmail ? `\nSigner email: ${input.signerEmail}` : ''}`,
       html: `<p><strong>${escapeHtml(input.templateName)}</strong> received a signed submission.</p><p>Submission ID: ${escapeHtml(input.submissionId)}</p>${input.signerEmail ? `<p>Signer email: ${escapeHtml(input.signerEmail)}</p>` : ''}`,
     },
-    recipients: { to: [{ address: requireAdminEmail() }] },
+    recipients: { to: notificationRecipients() },
     attachments: [{
       name: `${input.submissionId}-signed.pdf`,
       contentType: 'application/pdf',
@@ -58,12 +58,21 @@ export async function sendSubmissionToAdmin(input: {
   await poller.pollUntilDone()
 }
 
-function requireAdminEmail(): string {
-  const adminEmail = process.env.DOCULNK_ADMIN_EMAIL
-  if (!adminEmail) {
+function notificationRecipients(): { address: string }[] {
+  const addresses = requireAdminEmails()
+  const uniqueAddresses = [...new Map(addresses.map((address) => [address.trim().toLowerCase(), address.trim()])).values()]
+  return uniqueAddresses.map((address) => ({ address }))
+}
+
+function requireAdminEmails(): string[] {
+  const adminEmails = (process.env.DOCULNK_ADMIN_EMAIL ?? '')
+    .split(',')
+    .map((address) => address.trim())
+    .filter(Boolean)
+  if (adminEmails.length === 0) {
     throw new Error('DOCULNK_ADMIN_EMAIL is required')
   }
-  return adminEmail
+  return adminEmails
 }
 
 function escapeHtml(value: string): string {

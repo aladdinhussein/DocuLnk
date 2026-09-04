@@ -1,4 +1,4 @@
-export type FieldType = 'text' | 'signature' | 'initials' | 'date' | 'checkbox'
+export type FieldType = 'text' | 'phone' | 'signature' | 'initials' | 'date' | 'checkbox'
 
 export type TemplateField = {
   id: string

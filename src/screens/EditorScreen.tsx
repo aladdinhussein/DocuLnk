@@ -734,6 +734,7 @@ export default function EditorScreen({ seed, onClose, onPublished }: EditorScree
                   onChange={(event) => changeFieldType(event.target.value as FieldType)}
                 >
                   <option value="text">Text</option>
+                  <option value="phone">Phone number</option>
                   <option value="signature">Signature</option>
                   <option value="initials">Initials</option>
                   <option value="date">Date</option>

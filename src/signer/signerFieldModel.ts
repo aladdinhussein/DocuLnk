@@ -8,6 +8,7 @@ export const FIELD_VERB: Record<FieldType, string> = {
   initials: 'Initial',
   date: 'Date',
   text: 'Fill',
+  phone: 'Enter',
   checkbox: 'Check',
 }
 

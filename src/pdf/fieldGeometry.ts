@@ -34,6 +34,7 @@ export function fieldBoxStyle(
  */
 export const FIELD_MIN_SIZE: Record<FieldType, { width: number; height: number }> = {
   text: { width: 48, height: 18 },
+  phone: { width: 90, height: 18 },
   date: { width: 48, height: 18 },
   signature: { width: 60, height: 24 },
   initials: { width: 28, height: 20 },

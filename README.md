@@ -50,14 +50,14 @@ Configure these Function App values:
 - `DOCULNK_SIGNED_CONTAINER`: completed PDF container, default `signed-documents`
 - `DOCULNK_COMMUNICATION_SERVICES_CONNECTION_STRING`: Azure Communication Services resource connection string
 - `DOCULNK_EMAIL_SENDER_ADDRESS`: verified ACS sender address, for example `donotreply@your-verified-domain`
-- `DOCULNK_ADMIN_EMAIL`: optional address notified after a document is completed
+- `DOCULNK_ADMIN_EMAIL`: comma-separated addresses notified after a document is completed, for example `admin@example.com,Livoniafsctreasurer@gmail.com`
 - `DOCULNK_RETENTION_DAYS`: retention policy target for completed documents, default `365`
 
 The API exposes authenticated admin routes for templates and submissions: `GET/POST/DELETE /api/templates`, `GET /api/submissions`, and `GET /api/submissions/{submissionId}/document`. Public form routes are `GET /api/public/forms/{templateId}`, `POST /api/public/forms/{templateId}/submissions`, and `GET /api/public/submissions/{submissionId}/document`.
 
 Template creation validates the SHA-256 hash of uploaded PDF bytes before storage. Admin routes use Function authentication. Published forms are stable URLs that can be completed repeatedly by anyone with the link.
 
-Each completed form is saved to Blob Storage before Azure Communication Services attempts delivery. The signed PDF is attached to an email sent to `DOCULNK_ADMIN_EMAIL`; if delivery fails, the submission remains available through the authenticated admin archive and the public download returned to the signer. The sender domain/address must be verified in the ACS resource.
+Each completed form is saved to Blob Storage before Azure Communication Services attempts delivery. The signed PDF is attached to an email sent to every address in the comma-separated `DOCULNK_ADMIN_EMAIL` setting; if delivery fails, the submission remains available through the authenticated admin archive and the public download returned to the signer. The sender domain/address must be verified in the ACS resource.
 
 Signer submission requires an explicit electronic-signature disclosure consent. The consent is sent with remote completion and recorded in the audit event. The application provides an auditable signing workflow, but it does not by itself establish legal compliance for a particular jurisdiction or industry. Configure a scheduled Azure cleanup job using `DOCULNK_RETENTION_DAYS` before production to enforce document deletion.
 
